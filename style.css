@@ -1,0 +1,230 @@
+:root{
+  --bg:#f6f8fb;
+  --card:#ffffff;
+  --text:#0f172a;
+  --muted:#6b7280;
+  --shadow:0 10px 30px rgba(2,6,23,.06);
+  --shadow2:0 10px 25px rgba(2,6,23,.06);
+  --radius:16px;
+}
+
+body{
+  background:var(--bg);
+  color:var(--text);
+}
+
+.smallmuted{
+  color:var(--muted);
+  font-size:0.92rem;
+}
+
+.brandbar{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.brandbar img{
+  width:44px;
+  height:44px;
+  border-radius:10px;
+  object-fit:cover;
+}
+
+.badgepill{
+  display:inline-block;
+  padding:4px 10px;
+  border-radius:999px;
+  background:#eef2ff;
+  color:#111827;
+  white-space:nowrap;
+}
+
+.btnround{
+  border-radius:999px;
+}
+
+.cardsoft{
+  border:0;
+  border-radius:var(--radius);
+  background:var(--card);
+  box-shadow:var(--shadow);
+}
+
+.table td,
+.table th{
+  vertical-align:middle;
+}
+
+.table-responsive{
+  border-radius:14px;
+}
+
+.kpi{
+  border-radius:var(--radius);
+  padding:14px;
+  background:var(--card);
+  box-shadow:var(--shadow2);
+}
+
+.kpi .label{
+  color:#64748b;
+  font-size:.85rem;
+}
+
+.kpi .value{
+  font-size:1.35rem;
+  font-weight:800;
+  line-height:1.15;
+}
+
+.ordercard{
+  border-radius:var(--radius);
+  background:var(--card);
+  box-shadow:var(--shadow2);
+  padding:14px;
+}
+
+.linkbtn{
+  text-decoration:none;
+}
+
+.navbar .brandbar{
+  max-width:420px;
+}
+
+.navbar .navbar-brand{
+  min-width:0;
+}
+
+.navbar .brandbar div{
+  min-width:0;
+}
+
+.navbar .brandbar .fw-bold{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.navbar .smallmuted{
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+}
+
+.navbar .nav-link.rvh-nav{
+  border-radius:999px;
+  padding:.45rem .85rem;
+  color:#0f172a;
+}
+
+.navbar .nav-link.rvh-nav:hover{
+  background:#f1f5f9;
+}
+
+.navbar .nav-link.rvh-nav.active{
+  background:#111827;
+  color:#ffffff;
+}
+
+.navbar .navbar-toggler{
+  border-radius:12px;
+  border-color:#e5e7eb;
+  padding:.35rem .55rem;
+}
+
+.navbar .navbar-toggler:focus{
+  box-shadow:0 0 0 .2rem rgba(17,24,39,.12);
+}
+
+.kpi,
+.cardsoft,
+.ordercard{
+  overflow:hidden;
+}
+
+.form-control,
+.form-select{
+  border-radius:14px;
+}
+
+.btn{
+  border-radius:999px;
+}
+
+.table thead th{
+  font-size:.9rem;
+  color:#334155;
+}
+
+.table tbody td{
+  font-size:.95rem;
+}
+
+@media (max-width: 992px){
+  main.container{
+    margin-top:14px !important;
+  }
+
+  .navbar .badgepill{
+    display:none;
+  }
+}
+
+@media (max-width: 576px){
+  main.container{
+    padding-left:12px;
+    padding-right:12px;
+  }
+
+  .brandbar img{
+    width:40px;
+    height:40px;
+  }
+
+  .kpi{
+    padding:12px;
+  }
+
+  .kpi .value{
+    font-size:1.2rem;
+  }
+
+  .cardsoft{
+    border-radius:14px;
+  }
+
+  .table thead{
+    display:none;
+  }
+
+  .table tbody tr{
+    display:block;
+    background:#ffffff;
+    border:1px solid #e5e7eb;
+    border-radius:14px;
+    padding:10px 10px;
+    margin-bottom:10px;
+  }
+
+  .table tbody td{
+    display:flex;
+    justify-content:space-between;
+    gap:10px;
+    border:0;
+    padding:6px 2px;
+    font-size:.95rem;
+  }
+
+  .table tbody td:before{
+    content:attr(data-label);
+    color:#64748b;
+    font-size:.85rem;
+    font-weight:600;
+  }
+
+  .table tbody td:last-child{
+    padding-bottom:2px;
+  }
+}

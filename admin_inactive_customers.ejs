@@ -1,0 +1,220 @@
+<%- include('_header', { title: "Inactive Customers", appName, logoUrl, user }) %>
+
+<div class="container mt-3">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 m-0">Inactive Customers</h1>
+      <div class="text-muted small">
+        Customers jinhone <strong><%= cutoffDays %></strong> days se reorder nahi kiya
+      </div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+      <a href="/admin" class="btn btn-sm btn-outline-secondary">Back</a>
+      <a href="/admin/inactive_customers" class="btn btn-sm btn-outline-dark">Refresh</a>
+    </div>
+  </div>
+
+  <style>
+    .ic_card{border:1px solid #e5e7eb;border-radius:12px;background:#fff;overflow:hidden}
+    .ic_head{padding:12px 14px;border-bottom:1px solid #f1f5f9;display:flex;justify-content:space-between;align-items:center;gap:10px}
+    .ic_title{font-weight:800}
+    .ic_table{width:100%;border-collapse:collapse}
+    .ic_table th,.ic_table td{padding:10px 12px;border-bottom:1px solid #f1f5f9;vertical-align:middle}
+    .ic_table th{background:#f9fafb;font-size:12px;color:#334155;text-transform:uppercase;letter-spacing:.04em}
+    .ic_muted{color:#6b7280;font-size:12px}
+    .ic_rowname{font-weight:800}
+    .ic_select{min-width:160px}
+    .ic_empty{padding:16px;text-align:center;color:#6b7280}
+    .ic_badge{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:800;border:1px solid #fecaca;background:#fff1f2;color:#991b1b}
+    .ic_badge2{display:inline-block;padding:2px 8px;border-radius:999px;font-size:12px;font-weight:800;border:1px solid #bbf7d0;background:#ecfdf5;color:#065f46}
+  </style>
+
+  <div class="ic_card mb-3">
+    <div class="ic_head">
+      <div class="ic_title">
+        In Queue
+        <span class="ic_badge2" id="cntInQueue"><%= (inactive && inactive.length) ? inactive.length : 0 %></span>
+      </div>
+      <div class="ic_muted">Auto remove ho jayega agar customer dobara order kar de</div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="ic_table" id="tblInQueue">
+        <thead>
+          <tr>
+            <th class="text-nowrap">Customer</th>
+            <th class="text-nowrap">Phone</th>
+            <th class="text-nowrap">Last order</th>
+            <th class="text-nowrap">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% (inactive || []).forEach(c => { %>
+            <tr data-cid="<%= c.id %>">
+              <td>
+                <div class="ic_rowname"><%= c.name || "" %> <span class="ic_muted">(ID <%= c.id %>)</span></div>
+              </td>
+              <td class="text-nowrap"><%= c.phone || "" %></td>
+              <td class="text-nowrap"><%= c.last_order_at ? String(c.last_order_at).replace("T"," ").slice(0,19) : "" %></td>
+              <td class="text-nowrap">
+                <select class="form-select form-select-sm ic_select jsStatus">
+                  <option value="inqueue" selected>In Queue</option>
+                  <option value="leftforever">Left Forever</option>
+                </select>
+              </td>
+            </tr>
+          <% }) %>
+
+          <% if (!inactive || inactive.length === 0) { %>
+            <tr><td colspan="4" class="ic_empty">No inactive customers</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="ic_card">
+    <div class="ic_head">
+      <div class="ic_title">
+        Left Forever
+        <span class="ic_badge" id="cntLeft"><%= (leftForever && leftForever.length) ? leftForever.length : 0 %></span>
+      </div>
+      <div class="ic_muted">In Queue select karoge to upar wapas chala jayega</div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="ic_table" id="tblLeftForever">
+        <thead>
+          <tr>
+            <th class="text-nowrap">Customer</th>
+            <th class="text-nowrap">Phone</th>
+            <th class="text-nowrap">Last order</th>
+            <th class="text-nowrap">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% (leftForever || []).forEach(c => { %>
+            <tr data-cid="<%= c.id %>">
+              <td>
+                <div class="ic_rowname"><%= c.name || "" %> <span class="ic_muted">(ID <%= c.id %>)</span></div>
+              </td>
+              <td class="text-nowrap"><%= c.phone || "" %></td>
+              <td class="text-nowrap"><%= c.last_order_at ? String(c.last_order_at).replace("T"," ").slice(0,19) : "" %></td>
+              <td class="text-nowrap">
+                <select class="form-select form-select-sm ic_select jsStatus">
+                  <option value="inqueue">In Queue</option>
+                  <option value="leftforever" selected>Left Forever</option>
+                </select>
+              </td>
+            </tr>
+          <% }) %>
+
+          <% if (!leftForever || leftForever.length === 0) { %>
+            <tr><td colspan="4" class="ic_empty">No left forever customers</td></tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  (function(){
+    const tblIn = document.getElementById("tblInQueue");
+    const tblLeft = document.getElementById("tblLeftForever");
+    const cntIn = document.getElementById("cntInQueue");
+    const cntLeft = document.getElementById("cntLeft");
+
+    function updateCounts(){
+      const inRows = tblIn ? tblIn.querySelectorAll("tbody tr[data-cid]") : [];
+      const leftRows = tblLeft ? tblLeft.querySelectorAll("tbody tr[data-cid]") : [];
+      if(cntIn) cntIn.textContent = inRows.length;
+      if(cntLeft) cntLeft.textContent = leftRows.length;
+    }
+
+    function ensureEmptyRow(tableEl, emptyText){
+      if(!tableEl) return;
+      const tbody = tableEl.querySelector("tbody");
+      if(!tbody) return;
+      const dataRows = tbody.querySelectorAll("tr[data-cid]");
+      let emptyRow = tbody.querySelector("tr[data-empty='1']");
+      if(dataRows.length === 0){
+        if(!emptyRow){
+          emptyRow = document.createElement("tr");
+          emptyRow.setAttribute("data-empty","1");
+          emptyRow.innerHTML = "<td colspan='4' class='ic_empty'>" + emptyText + "</td>";
+          tbody.appendChild(emptyRow);
+        }
+      }else{
+        if(emptyRow) emptyRow.remove();
+      }
+    }
+
+    async function saveStatus(cid, status){
+      const res = await fetch("/admin/inactive_customers/" + encodeURIComponent(cid) + "/status", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8",
+          "X-Requested-With": "XMLHttpRequest",
+          "Accept": "application/json"
+        },
+        credentials: "same-origin",
+        body: "status=" + encodeURIComponent(status)
+      });
+
+      let data = null;
+      try{ data = await res.json(); }catch(e){ data = null; }
+
+      if(!data || !data.ok){
+        throw new Error((data && data.msg) ? data.msg : "Save failed");
+      }
+      return true;
+    }
+
+    function moveRow(row, toLeft){
+      if(!row) return;
+      const tbodyIn = tblIn.querySelector("tbody");
+      const tbodyLeft = tblLeft.querySelector("tbody");
+
+      if(toLeft){
+        tbodyLeft.insertBefore(row, tbodyLeft.firstChild);
+      }else{
+        tbodyIn.insertBefore(row, tbodyIn.firstChild);
+      }
+
+      ensureEmptyRow(tblIn, "No inactive customers");
+      ensureEmptyRow(tblLeft, "No left forever customers");
+      updateCounts();
+    }
+
+    document.addEventListener("change", async function(e){
+      const sel = e.target;
+      if(!sel || !sel.classList.contains("jsStatus")) return;
+
+      const row = sel.closest("tr");
+      const cid = row ? row.getAttribute("data-cid") : "";
+      const status = String(sel.value || "inqueue").toLowerCase().trim();
+
+      if(!cid) return;
+
+      sel.disabled = true;
+
+      try{
+        await saveStatus(cid, status);
+        moveRow(row, status === "leftforever");
+      }catch(err){
+        alert(err && err.message ? err.message : "Status update failed");
+      }finally{
+        sel.disabled = false;
+      }
+    });
+
+    ensureEmptyRow(tblIn, "No inactive customers");
+    ensureEmptyRow(tblLeft, "No left forever customers");
+    updateCounts();
+  })();
+</script>
+
+<%- include('_footer') %>

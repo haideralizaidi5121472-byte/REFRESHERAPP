@@ -1,0 +1,306 @@
+<%- include("_header", { title: "Customers", appName, logoUrl, user }) %>
+
+<%
+  const safeNum = (v) => Number(v || 0) || 0;
+
+  const discountPerBottle = (c) => {
+    const lp = safeNum(c && (c.list_price !== undefined ? c.list_price : c.listPrice));
+    const up = safeNum(c && (c.unit_price !== undefined ? c.unit_price : c.unitPrice));
+    return Math.max(0, lp - up);
+  };
+
+  const outstandingAmt = (c) => {
+    if (c && c.outstanding !== undefined && c.outstanding !== null) return safeNum(c.outstanding);
+    if (c && c.balance !== undefined && c.balance !== null) return safeNum(c.balance);
+    if (c && c.Balance !== undefined && c.Balance !== null) return safeNum(c.Balance);
+    if (c && c.opening_balance !== undefined && c.opening_balance !== null) return safeNum(c.opening_balance);
+    return 0;
+  };
+
+  const openingBalance = (c) => {
+    if (c && c.opening_balance !== undefined && c.opening_balance !== null) return safeNum(c.opening_balance);
+    if (c && c.OpeningBalance !== undefined && c.OpeningBalance !== null) return safeNum(c.OpeningBalance);
+    return 0;
+  };
+
+  const openingBottle = (c) => {
+    if (c && c.opening_bottle !== undefined && c.opening_bottle !== null) return safeNum(c.opening_bottle);
+    if (c && c.OpeningBottle !== undefined && c.OpeningBottle !== null) return safeNum(c.OpeningBottle);
+    return 0;
+  };
+
+  const bottlesBalance = (c) => {
+    if (c && c.bottles_balance !== undefined && c.bottles_balance !== null) return safeNum(c.bottles_balance);
+    if (c && c.BottlesBalance !== undefined && c.BottlesBalance !== null) return safeNum(c.BottlesBalance);
+    return 0;
+  };
+
+  const phoneStr = (c) => String((c && (c.phone || c.MobileNo || "")) || "").trim();
+
+  const phoneDigits = (p) => String(p || "").replace(/[^\d]/g, "");
+
+  const waLink = (p, msg) => {
+    const d = phoneDigits(p);
+    if (!d) return "";
+    const t = encodeURIComponent(msg || "");
+    return `https://wa.me/${d}?text=${t}`;
+  };
+
+  const mapUrl = (c) => String((c && (c.map_url || c.location || "")) || "").trim();
+
+  const short = (s, n) => {
+    const t = String(s || "").trim();
+    if (!t) return "";
+    if (t.length <= n) return t;
+    return t.slice(0, n) + "…";
+  };
+
+  const pinStatus = (c) => (c && c.pin_hash ? "Set" : "None");
+%>
+
+<div class="card cardsoft p-3 p-md-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div>
+      <div class="h5 mb-1">Customers</div>
+      <div class="smallmuted">Excel format fields, pricing, discount and outstanding</div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-primary btnround" href="/admin/customers/new">New customer</a>
+      <a class="btn btn-outline-primary btnround" href="/admin/import">Import Excel</a>
+      <a class="btn btn-outline-success btnround" href="/admin/customers/download">Download customers</a>
+      <a class="btn btn-outline-dark btnround" href="/admin">Back</a>
+    </div>
+  </div>
+
+  <hr class="my-3">
+
+  <div class="row g-2 align-items-center mb-3">
+    <div class="col-12 col-md-6">
+      <input id="custSearch" class="form-control" placeholder="Search by id, name, phone, area">
+    </div>
+    <div class="col-12 col-md-6 small text-muted">
+      Total customers <strong><%= (customers || []).length %></strong>
+    </div>
+  </div>
+
+  <% if (!customers || customers.length === 0) { %>
+    <div class="text-muted text-center py-4">No customers</div>
+  <% } %>
+
+  <!-- Mobile cards -->
+  <div class="d-block d-md-none">
+    <div class="list-group" id="custCards">
+      <% (customers || []).forEach(c => { 
+          const disc = discountPerBottle(c);
+          const out = outstandingAmt(c);
+          const ob = openingBalance(c);
+          const opb = openingBottle(c);
+          const bb = bottlesBalance(c);
+          const ph = phoneStr(c);
+          const mu = mapUrl(c);
+
+          const waMsg =
+            `${appName}\n` +
+            `Customer ${c.name}\n` +
+            `Customer ID ${c.id}\n` +
+            `Please send any updates here`;
+
+          const wa = waLink(ph, waMsg);
+      %>
+        <div class="list-group-item custRow"
+          data-search="<%= String(c.id || '') + ' ' + String(c.name || '') + ' ' + String(c.phone || c.MobileNo || '') + ' ' + String(c.area || c.Area || '') %>">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div>
+              <div class="fw-semibold"><%= c.name %></div>
+              <div class="small text-muted">
+                ID <%= c.id %>
+                <% if ((c.area || c.Area)) { %>  Area <%= (c.area || c.Area) %> <% } %>
+              </div>
+              <div class="small text-muted">
+                Mobile <%= ph ? ph : "N A" %>
+              </div>
+              <div class="small text-muted">
+                Address <%= short(c.address || c.Address || "", 44) || "N A" %>
+              </div>
+              <div class="small text-muted">
+                Water <%= c.water_name || c.water || "N A" %>
+              </div>
+            </div>
+
+            <div class="text-end">
+              <div class="badge bg-light text-dark">PIN <%= pinStatus(c) %></div>
+              <div class="mt-2">
+                <div class="small text-muted">Unit <strong><%= safeNum(c.unit_price) %></strong></div>
+                <div class="small text-muted">List <strong><%= safeNum(c.list_price) %></strong></div>
+                <div class="small text-success">Save <strong><%= disc %></strong></div>
+              </div>
+              <div class="mt-2">
+                <div class="small <%= out > 0 ? 'text-danger fw-semibold' : 'text-success fw-semibold' %>">
+                  Outstanding <%= out %>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mt-2 small text-muted">
+            Balance bottles <strong><%= bb %></strong>  Opening bottle <strong><%= opb %></strong>  Opening balance <strong><%= ob %></strong>
+          </div>
+
+          <div class="d-flex flex-wrap gap-2 mt-3">
+            <a class="btn btn-sm btn-outline-dark btnround" href="/admin/customers/<%= c.id %>">View</a>
+            <a class="btn btn-sm btn-outline-primary btnround" href="/admin/customers/<%= c.id %>/edit">Edit</a>
+
+            <% if (mu) { %>
+              <a class="btn btn-sm btn-outline-success btnround" href="<%= mu %>" target="_blank" rel="noopener">Map</a>
+            <% } %>
+
+            <% if (ph) { %>
+              <a class="btn btn-sm btn-outline-secondary btnround" href="tel:<%= phoneDigits(ph) %>">Call</a>
+            <% } %>
+
+            <% if (wa) { %>
+              <a class="btn btn-sm btn-success btnround" href="<%= wa %>" target="_blank" rel="noopener">WhatsApp</a>
+            <% } %>
+
+            <form method="post" action="/admin/customers/<%= c.id %>/delete" style="display:inline">
+              <button
+                type="submit"
+                class="btn btn-sm btn-danger btnround"
+                onclick="return confirm('Delete customer permanently? This will remove ledger too.')"
+              >
+                Delete
+              </button>
+            </form>
+          </div>
+        </div>
+      <% }) %>
+    </div>
+  </div>
+
+  <!-- Desktop table -->
+  <div class="table-responsive d-none d-md-block">
+    <table class="table table-sm align-middle" id="custTable">
+      <thead class="table-light">
+        <tr>
+          <th class="text-nowrap">CodeNo</th>
+          <th>Name</th>
+          <th class="text-nowrap">MobileNo</th>
+          <th class="text-nowrap">Area</th>
+          <th>Address</th>
+          <th class="text-nowrap">Location</th>
+          <th class="text-nowrap">Water</th>
+          <th class="text-nowrap">PIN</th>
+          <th class="text-nowrap">Unit price</th>
+          <th class="text-nowrap">List price</th>
+          <th class="text-nowrap">Discount</th>
+          <th class="text-nowrap">OpeningBalance</th>
+          <th class="text-nowrap">OpeningBottle</th>
+          <th class="text-nowrap">BottlesBalance</th>
+          <th class="text-nowrap">Balance</th>
+          <th class="text-nowrap">Actions</th>
+        </tr>
+      </thead>
+
+      <tbody>
+        <% (customers || []).forEach(c => { 
+            const disc = discountPerBottle(c);
+            const out = outstandingAmt(c);
+            const ob = openingBalance(c);
+            const opb = openingBottle(c);
+            const bb = bottlesBalance(c);
+            const ph = phoneStr(c);
+            const mu = mapUrl(c);
+
+            const waMsg =
+              `${appName}\n` +
+              `Customer ${c.name}\n` +
+              `Customer ID ${c.id}\n` +
+              `Please send any updates here`;
+
+            const wa = waLink(ph, waMsg);
+        %>
+          <tr class="custRow"
+            data-search="<%= String(c.id || '') + ' ' + String(c.name || '') + ' ' + String(c.phone || c.MobileNo || '') + ' ' + String(c.area || c.Area || '') + ' ' + String(c.address || c.Address || '') %>">
+            <td class="fw-semibold text-nowrap"><%= c.id %></td>
+            <td>
+              <div class="fw-semibold"><%= c.name %></div>
+              <div class="small text-muted"><%= short(c.address || c.Address || "", 55) %></div>
+            </td>
+            <td class="text-nowrap"><%= ph || "" %></td>
+            <td class="text-nowrap"><%= (c.area || c.Area || "") %></td>
+            <td><%= short(c.address || c.Address || "", 60) %></td>
+            <td class="text-nowrap">
+              <% if (mu) { %>
+                <a class="btn btn-sm btn-outline-success btnround" href="<%= mu %>" target="_blank" rel="noopener">Map</a>
+              <% } else { %>
+                <span class="text-muted">N A</span>
+              <% } %>
+            </td>
+            <td class="text-nowrap"><%= c.water_name || "" %></td>
+            <td class="text-nowrap"><%= pinStatus(c) %></td>
+            <td class="text-nowrap"><%= safeNum(c.unit_price) %></td>
+            <td class="text-nowrap text-muted"><%= safeNum(c.list_price) %></td>
+            <td class="text-nowrap fw-semibold text-success"><%= disc %></td>
+            <td class="text-nowrap"><%= ob %></td>
+            <td class="text-nowrap"><%= opb %></td>
+            <td class="text-nowrap"><%= bb %></td>
+            <td class="text-nowrap <%= out > 0 ? 'text-danger fw-semibold' : 'text-success fw-semibold' %>"><%= out %></td>
+            <td class="text-nowrap">
+              <div class="d-flex flex-wrap gap-1">
+                <a class="btn btn-sm btn-outline-dark btnround" href="/admin/customers/<%= c.id %>">View</a>
+                <a class="btn btn-sm btn-outline-primary btnround" href="/admin/customers/<%= c.id %>/edit">Edit</a>
+
+                <% if (ph) { %>
+                  <a class="btn btn-sm btn-outline-secondary btnround" href="tel:<%= phoneDigits(ph) %>">Call</a>
+                <% } %>
+
+                <% if (wa) { %>
+                  <a class="btn btn-sm btn-success btnround" href="<%= wa %>" target="_blank" rel="noopener">WhatsApp</a>
+                <% } %>
+
+                <form method="post" action="/admin/customers/<%= c.id %>/delete" style="display:inline">
+                  <button
+                    type="submit"
+                    class="btn btn-sm btn-danger btnround"
+                    onclick="return confirm('Delete customer permanently? This will remove ledger too.')"
+                  >
+                    Delete
+                  </button>
+                </form>
+              </div>
+            </td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<script>
+  (function () {
+    try {
+      var input = document.getElementById("custSearch");
+      var rows = Array.prototype.slice.call(document.querySelectorAll(".custRow"));
+
+      function norm(s) {
+        return String(s || "").toLowerCase().trim();
+      }
+
+      function apply() {
+        var q = norm(input && input.value);
+        rows.forEach(function (r) {
+          var hay = norm(r.getAttribute("data-search"));
+          var ok = !q || hay.indexOf(q) !== -1;
+          r.style.display = ok ? "" : "none";
+        });
+      }
+
+      if (input) input.addEventListener("input", apply);
+      apply();
+    } catch (e) {}
+  })();
+</script>
+
+<%- include("_footer") %>

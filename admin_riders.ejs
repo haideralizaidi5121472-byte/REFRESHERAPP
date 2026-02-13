@@ -1,0 +1,162 @@
+<%- include("_header", { title: "Riders", appName, logoUrl, user }) %>
+
+<div class="row g-3">
+  <div class="col-12 col-lg-5">
+    <div class="card cardsoft p-4">
+      <div class="d-flex align-items-center justify-content-between">
+        <div>
+          <div class="h5 mb-1">Add rider</div>
+          <div class="smallmuted">Rider logs in using this rider id</div>
+        </div>
+        <a class="btn btn-outline-dark btnround" href="/admin">Back</a>
+      </div>
+
+      <% if (msg) { %>
+        <div class="alert alert-warning mt-3"><%= msg %></div>
+      <% } %>
+
+      <form method="post" action="/admin/riders/new" class="row g-3 mt-2">
+        <div class="col-12 col-md-4">
+          <label class="form-label">Rider id</label>
+          <input class="form-control" name="id" placeholder="R001" required>
+        </div>
+        <div class="col-12 col-md-8">
+          <label class="form-label">Rider name</label>
+          <input class="form-control" name="name" required>
+        </div>
+        <div class="col-12">
+          <label class="form-label">Phone</label>
+          <input class="form-control" name="phone">
+        </div>
+        <div class="col-12">
+          <button class="btn btn-primary btnround px-4">Create rider</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-7">
+    <div class="card cardsoft p-4">
+      <div class="d-flex align-items-center justify-content-between mb-2">
+        <div class="h5 mb-0">Rider list</div>
+        <form method="GET" action="/admin/riders" class="d-flex gap-2 align-items-end flex-wrap">
+          <div>
+            <label class="form-label mb-1 smallmuted">From</label>
+            <input class="form-control form-control-sm" type="date" name="from" value="<%= (typeof from !== 'undefined' ? (from || '') : '') %>">
+          </div>
+          <div>
+            <label class="form-label mb-1 smallmuted">To</label>
+            <input class="form-control form-control-sm" type="date" name="to" value="<%= (typeof to !== 'undefined' ? (to || '') : '') %>">
+          </div>
+          <button class="btn btn-sm btn-primary btnround px-3" type="submit">Apply</button>
+          <a class="btn btn-sm btn-outline-dark btnround px-3" href="/admin/riders">Reset</a>
+        </form>
+      </div>
+
+      <div class="smallmuted mb-3">
+        Showing: <span class="fw-semibold"><%= (typeof filterLabel !== "undefined" && filterLabel) ? filterLabel : "Today" %></span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm align-middle">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Name</th>
+              <th>Phone</th>
+              <th>Status</th>
+              <th class="text-end">Deliveries</th>
+              <th class="text-end">Bottles</th>
+              <th class="text-end">Returned</th>
+              <th class="text-end">Sales</th>
+              <th class="text-end">Cash</th>
+              <th class="text-end">Jazz</th>
+              <th class="text-end">Due</th>
+              <th class="text-end">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (riders.length === 0) { %>
+              <tr><td colspan="12" class="smallmuted">No riders yet</td></tr>
+            <% } %>
+
+            <% riders.forEach(r => { %>
+              <tr>
+                <td class="fw-semibold"><%= r.id %></td>
+                <td><%= r.name %></td>
+                <td class="smallmuted"><%= r.phone || "" %></td>
+                <td>
+                  <span class="badge text-bg-light"><%= r.is_active ? "active" : "inactive" %></span>
+                </td>
+
+                <td class="text-end"><%= (r.range ? r.range.deliveries : r.today.deliveries) %></td>
+                <td class="text-end"><%= (r.range ? r.range.bottles : r.today.bottles) %></td>
+                <td class="text-end"><%= (r.range ? r.range.returned : r.today.returned) %></td>
+                <td class="text-end"><%= (r.range ? r.range.sales : r.today.sales) %></td>
+                <td class="text-end"><%= (r.range ? r.range.cash : r.today.cash) %></td>
+                <td class="text-end"><%= (r.range ? r.range.jazz : r.today.jazz) %></td>
+                <td class="text-end"><%= (r.range ? r.range.due : r.today.due) %></td>
+
+                <td class="text-end">
+                  <button type="button" class="btn btn-sm btn-outline-dark btnround" onclick="toggleEditRider('<%= r.id %>')">Edit</button>
+
+                  <form method="post" action="/admin/riders/<%= r.id %>/delete" style="display:inline" onsubmit="return confirm('Delete rider <%= r.name %>?')">
+                    <button class="btn btn-sm btn-outline-danger btnround" type="submit">Del</button>
+                  </form>
+                </td>
+              </tr>
+
+              <tr id="edit_row_<%= r.id %>" style="display:none">
+                <td colspan="12">
+                  <div class="border rounded p-3 bg-light">
+                    <div class="fw-semibold mb-2">Edit rider <%= r.id %></div>
+
+                    <form method="post" action="/admin/riders/<%= r.id %>/update" class="row g-2">
+                      <div class="col-12 col-md-4">
+                        <label class="form-label">Name</label>
+                        <input class="form-control" name="name" value="<%= r.name %>" required>
+                      </div>
+
+                      <div class="col-12 col-md-3">
+                        <label class="form-label">Phone</label>
+                        <input class="form-control" name="phone" value="<%= r.phone || '' %>">
+                      </div>
+
+                      <div class="col-12 col-md-3">
+                        <label class="form-label">Status</label>
+                        <select class="form-select" name="is_active">
+                          <option value="1" <%= r.is_active ? "selected" : "" %>>active</option>
+                          <option value="0" <%= !r.is_active ? "selected" : "" %>>inactive</option>
+                        </select>
+                      </div>
+
+                      <div class="col-12 col-md-2">
+                        <label class="form-label">New password</label>
+                        <input class="form-control" name="password_plain" placeholder="optional">
+                      </div>
+
+                      <div class="col-12 d-flex gap-2">
+                        <button class="btn btn-primary btnround px-4" type="submit">Save</button>
+                        <button class="btn btn-outline-dark btnround px-4" type="button" onclick="toggleEditRider('<%= r.id %>')">Cancel</button>
+                      </div>
+                    </form>
+                  </div>
+                </td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  function toggleEditRider(id) {
+    var row = document.getElementById("edit_row_" + id);
+    if (!row) return;
+    row.style.display = (row.style.display === "none" || row.style.display === "") ? "table-row" : "none";
+  }
+</script>
+
+<%- include("_footer") %>

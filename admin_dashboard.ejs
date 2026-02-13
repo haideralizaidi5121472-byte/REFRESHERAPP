@@ -1,0 +1,1165 @@
+<%- include('_header', { title: "Admin Dashboard", appName, logoUrl, user }) %>
+
+<%
+  const safeNum = (v) => Number(v || 0) || 0;
+
+  const salesToday = safeNum(stats && stats.salesToday);
+  const cashToday = safeNum(stats && stats.cashInHand);
+  const jazzToday = safeNum(stats && stats.totalJazz);
+
+  const expToday = safeNum(stats && stats.totalExpenses);
+  const expCashToday = safeNum(stats && stats.expCashToday);
+  const expJazzToday = safeNum(stats && stats.expJazzToday);
+
+  const cashNet = (stats && stats.cashNet !== undefined && stats.cashNet !== null)
+    ? safeNum(stats.cashNet)
+    : Math.max(0, cashToday - expCashToday);
+
+  const jazzNet = (stats && stats.jazzNet !== undefined && stats.jazzNet !== null)
+    ? safeNum(stats.jazzNet)
+    : Math.max(0, jazzToday - expJazzToday);
+
+  const todayBottles = safeNum(globalStats && globalStats.todayBottles);
+  const todayOrders = safeNum(globalStats && globalStats.todayOrders);
+  const totalClients = safeNum(globalStats && globalStats.totalClients);
+
+  const pendingCount = (pendingJazz && pendingJazz.length) ? pendingJazz.length : 0;
+  const pendingSum = (pendingJazz && pendingJazz.length)
+    ? pendingJazz.reduce((a, p) => a + safeNum(p && p.payment_amount), 0)
+    : 0;
+
+  const udhaarAll = safeNum(stats && stats.totalUdhaarAll);
+
+  const profitToday = salesToday - expToday;
+  const profitNet = salesToday - expToday - udhaarAll;
+
+  const spotQty = safeNum(stats && stats.spotQty);
+  const spotTotal = safeNum(stats && stats.spotTotal);
+  const spotAvgPrice = safeNum(stats && stats.spotAvgPrice);
+
+  /* NEW FIELDS FROM SERVER */
+  const previousJazzCollected = safeNum(stats && stats.previousJazzCollected);
+  const previousUdhaarCollected = safeNum(stats && stats.previousUdhaarCollected);
+  const pendingJazzAll = safeNum(stats && stats.pendingJazzAll);
+  const totalNetToday = safeNum(stats && stats.totalNetToday);
+  const totalNetWithPrevious = safeNum(stats && stats.totalNetWithPrevious);
+
+  const fmtDate = (iso) => {
+    try {
+      if (!iso) return "";
+      return new Date(iso).toLocaleString();
+    } catch (e) {
+      return String(iso || "");
+    }
+  };
+
+  const riderMap = {};
+  (riders || []).forEach(rr => { riderMap[String(rr.id)] = rr.name; });
+
+  const badgeForStatus = (st) => {
+    const s = String(st || "").toLowerCase();
+    if (s === "pending") return "bg-secondary";
+    if (s === "assigned") return "bg-primary";
+    if (s === "accepted") return "bg-info";
+    if (s === "onway") return "bg-warning text-dark";
+    if (s === "delivered") return "bg-success";
+    if (s === "cancelled") return "bg-dark";
+    return "bg-light text-dark";
+  };
+
+  const qtyForRow = (o) => {
+    const dq = safeNum(o && o.delivered_qty);
+    if (dq > 0) return dq;
+    return safeNum(o && o.quantity_requested);
+  };
+
+  const outstandingVal = (o) => {
+    const v = safeNum(o && o.outstanding);
+    return v > 0 ? v : 0;
+  };
+
+  const allOrders = Array.isArray(orders) ? orders : [];
+  const getSt = (o) => String(o && o.status ? o.status : "").toLowerCase();
+
+  const pendingOrders = allOrders.filter(o => getSt(o) === "pending");
+
+  const assignedOrders = allOrders.filter(o => {
+    const st = getSt(o);
+    if (st === "pending") return false;
+    if (st === "delivered") return false;
+    if (st === "cancelled") return false;
+    return true;
+  });
+
+  const deliveredOrders = allOrders.filter(o => getSt(o) === "delivered");
+
+  const statusCounts = {
+    pending: pendingOrders.length,
+    assigned: allOrders.filter(o => getSt(o) === "assigned").length,
+    accepted: allOrders.filter(o => getSt(o) === "accepted").length,
+    onway: allOrders.filter(o => getSt(o) === "onway").length,
+    delivered: deliveredOrders.length
+  };
+%>
+
+<style>
+  .badge_admin{
+    display:inline-block;
+    padding:2px 8px;
+    border-radius:999px;
+    font-size:12px;
+    font-weight:800;
+    background:#fff7ed;
+    border:1px solid #fed7aa;
+    color:#9a3412;
+    margin-left:8px;
+    vertical-align:middle;
+  }
+
+  .btn_primary{
+    background:#111827;color:#fff;border:0;border-radius:10px;
+    padding:10px 14px;cursor:pointer;font-weight:600
+  }
+  .btn_ghost{
+    background:#fff;color:#111827;border:1px solid #e5e7eb;border-radius:10px;
+    padding:10px 14px;cursor:pointer;font-weight:600
+  }
+  .modal_backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,.45);
+    display:flex;align-items:center;justify-content:center;z-index:9999;
+    padding:16px
+  }
+  .hidden{display:none !important}
+  .modal_card{
+    width:100%;max-width:720px;background:#fff;border-radius:14px;
+    box-shadow:0 20px 50px rgba(0,0,0,.2);overflow:hidden
+  }
+  .modal_head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 16px;border-bottom:1px solid #eee
+  }
+  .modal_body{padding:16px}
+  .form_row{margin:10px 0}
+  .form_row label{display:block;font-weight:700;margin-bottom:6px}
+  .form_row input,.form_row select{
+    width:100%;padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;
+    outline:none
+  }
+  .result_list{
+    border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:10px
+  }
+  .result_item{
+    padding:10px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer
+  }
+  .result_item:hover{background:#f9fafb}
+  .result_item:last-child{border-bottom:0}
+  .muted{color:#6b7280;font-size:12px}
+  .selected_box{
+    margin-top:12px;padding:12px;border:1px solid #dbeafe;background:#eff6ff;border-radius:12px
+  }
+  .modal_actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+  .msg{margin-top:10px;font-size:13px}
+  .msg_ok{color:#065f46}
+  .msg_err{color:#b91c1c}
+</style>
+
+<div class="container mt-3">
+
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+    <div>
+      <h1 class="h3 m-0">Admin Dashboard</h1>
+      <div class="text-muted small">
+        Clients <strong><%= totalClients %></strong>
+        Orders today <strong><%= todayOrders %></strong>
+        Bottles today <strong><%= todayBottles %></strong>
+      </div>
+    </div>
+
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <% if (isOwner) { %>
+        <span class="badge bg-warning text-dark">OWNER ACCESS</span>
+      <% } %>
+
+      <button type="button" id="btnGenOrder" class="btn btn-sm btn-primary">
+        Generate Order
+      </button>
+      <a href="/admin/inactive_customers" class="btn btn-sm btn-danger">
+        Inactive Customers
+      </a>
+      <a href="/admin" class="btn btn-sm btn-outline-secondary">Refresh</a>
+    </div>
+  </div>
+
+  <div class="row g-3 mb-3">
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card bg-primary text-white h-100">
+        <div class="card-body">
+          <div class="small opacity-75">Today sales</div>
+          <div class="display-6 fw-bold m-0"><%= salesToday %> <span class="fs-6"><%= currency %></span></div>
+          <div class="small opacity-75">Bottles <%= todayBottles %></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card bg-success text-white h-100">
+        <div class="card-body">
+          <div class="small opacity-75">Cash collected</div>
+          <div class="display-6 fw-bold m-0"><%= cashToday %> <span class="fs-6"><%= currency %></span></div>
+          <div class="small opacity-75">
+            Cash expense <%= expCashToday %> <%= currency %>
+            <span class="ms-2">Net cash <%= cashNet %> <%= currency %></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card bg-info text-white h-100">
+        <div class="card-body">
+          <div class="small opacity-75">JazzCash collected</div>
+          <div class="display-6 fw-bold m-0"><%= jazzToday %> <span class="fs-6"><%= currency %></span></div>
+          <div class="small opacity-75">
+            Jazz expense <%= expJazzToday %> <%= currency %>
+            <span class="ms-2">Net jazz <%= jazzNet %> <%= currency %></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card bg-warning text-dark h-100">
+        <div class="card-body">
+          <div class="small opacity-75">JazzCash pending today</div>
+          <div class="display-6 fw-bold m-0"><%= pendingSum %> <span class="fs-6"><%= currency %></span></div>
+          <div class="small opacity-75">
+            Orders <%= pendingCount %>
+            <span class="ms-2">Expenses <%= expToday %> <%= currency %></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- NEW CARDS START -->
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card bg-secondary text-white h-100">
+        <div class="card-body">
+          <div class="small opacity-75">Previous Jazz collected today</div>
+          <div class="display-6 fw-bold m-0"><%= previousJazzCollected %> <span class="fs-6"><%= currency %></span></div>
+          <div class="small opacity-75">Old delivered orders payment received today</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card bg-secondary text-white h-100">
+        <div class="card-body">
+          <div class="small opacity-75">Previous udhaar collected today</div>
+          <div class="display-6 fw-bold m-0"><%= previousUdhaarCollected %> <span class="fs-6"><%= currency %></span></div>
+          <div class="small opacity-75">Old udhaar receive entries today</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card bg-warning text-dark h-100">
+        <div class="card-body">
+          <div class="small opacity-75">Pending Jazz all time</div>
+          <div class="display-6 fw-bold m-0"><%= pendingJazzAll %> <span class="fs-6"><%= currency %></span></div>
+          <div class="small opacity-75">All delivered Jazz not verified yet</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card bg-success text-white h-100">
+        <div class="card-body">
+          <div class="small opacity-75">Total net today</div>
+          <div class="display-6 fw-bold m-0"><%= totalNetToday %> <span class="fs-6"><%= currency %></span></div>
+          <div class="small opacity-75">(Cash + Jazz) minus expenses</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card bg-dark text-white h-100">
+        <div class="card-body">
+          <div class="small opacity-75">Total net with previous</div>
+          <div class="display-6 fw-bold m-0"><%= totalNetWithPrevious %> <span class="fs-6"><%= currency %></span></div>
+          <div class="small opacity-75">Net today plus previous collections</div>
+        </div>
+      </div>
+    </div>
+    <!-- NEW CARDS END -->
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card bg-dark text-white h-100">
+        <div class="card-body">
+          <div class="small opacity-75">Today expenses</div>
+          <div class="display-6 fw-bold m-0"><%= expToday %> <span class="fs-6"><%= currency %></span></div>
+          <div class="small opacity-75">
+            Cash <%= expCashToday %> <%= currency %>
+            <span class="ms-2">Jazz <%= expJazzToday %> <%= currency %></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card bg-danger text-white h-100">
+        <div class="card-body">
+          <div class="small opacity-75">Total udhaar</div>
+          <div class="display-6 fw-bold m-0"><%= udhaarAll %> <span class="fs-6"><%= currency %></span></div>
+          <div class="small opacity-75">Outstanding across all customers</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card bg-secondary text-white h-100">
+        <div class="card-body">
+          <div class="small opacity-75">Spot filling</div>
+          <div class="display-6 fw-bold m-0"><%= spotTotal %> <span class="fs-6"><%= currency %></span></div>
+          <div class="small opacity-75">
+            Qty <strong><%= spotQty %></strong>
+            <span class="ms-2">Avg <strong><%= spotAvgPrice %></strong> <%= currency %></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="alert alert-light border d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <div>
+  <div class="alert alert-light border d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+    <div>
+      <strong>Total net today</strong>
+      <div class="small text-muted">
+        Only today (Cash + Jazz) minus today expenses
+      </div>
+    </div>
+    <div class="fw-bold"><%= totalNetToday %> <%= currency %></div>
+  </div>
+      <strong>Total net with previous</strong>
+      <div class="small text-muted">
+        Net today <strong><%= totalNetToday %></strong>
+        <span class="ms-2">Prev Jazz <strong><%= previousJazzCollected %></strong></span>
+        <span class="ms-2">Prev udhaar <strong><%= previousUdhaarCollected %></strong></span>
+      </div>
+    </div>
+    <div class="fw-bold"><%= totalNetWithPrevious %> <%= currency %></div>
+  </div>
+
+  <div class="d-flex flex-wrap justify-content-end gap-2 mb-3">
+    <button type="button" id="btnSpotAdd" class="btn btn-sm btn-outline-dark">
+      Add spot filling
+    </button>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-12 col-md-3">
+      <a href="/admin/orders" class="btn btn-outline-dark w-100 py-3">Orders</a>
+    </div>
+    <div class="col-12 col-md-3">
+      <a href="/admin/customers" class="btn btn-outline-dark w-100 py-3">Customers</a>
+    </div>
+    <div class="col-12 col-md-3">
+      <a href="/admin/expenses" class="btn btn-outline-dark w-100 py-3">Expenses</a>
+    </div>
+    <div class="col-12 col-md-3">
+      <a href="/admin/pending_jazzcash" class="btn btn-outline-warning w-100 py-3">Pending JazzCash</a>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-4">
+    <div class="col-12 col-md-4">
+      <a href="/admin/riders" class="btn btn-outline-dark w-100 py-3">Manage riders</a>
+    </div>
+    <div class="col-12 col-md-4">
+      <a href="/admin/import" class="btn btn-outline-dark w-100 py-3">Import Excel</a>
+    </div>
+    <div class="col-12 col-md-4">
+      <a href="/sales_admin/report" target="_blank" rel="noopener" class="btn btn-outline-primary w-100 py-3">Sales report</a>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <strong>Pending orders</strong>
+        <div class="small text-muted">
+          Pending <strong><%= statusCounts.pending %></strong>
+        </div>
+      </div>
+      <div class="small text-muted">
+        Total <strong><%= pendingOrders.length %></strong>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th class="text-nowrap">Order</th>
+            <th>Customer</th>
+            <th class="text-nowrap">Bottles</th>
+            <th class="text-nowrap">Status</th>
+            <th class="text-nowrap">Rider assign</th>
+            <th class="text-nowrap">Rider</th>
+            <th class="text-nowrap">Outstanding</th>
+            <th class="text-nowrap">Created</th>
+            <th class="text-nowrap">Quick</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% (pendingOrders || []).forEach(o => { 
+              const st = String(o.status || "").toLowerCase();
+              const rid = String(o.rider_id || "");
+              const riderName = riderMap[rid] || "";
+              const out = outstandingVal(o);
+              const qty = qtyForRow(o);
+              const byAdmin = String(o.created_source || "").toLowerCase() === "admin";
+          %>
+            <tr>
+              <td class="text-nowrap fw-semibold">#<%= o.id %></td>
+
+              <td>
+                <div class="fw-semibold">
+                  <%= o.customer_name || "" %>
+                  <% if (byAdmin) { %>
+                    <span class="badge_admin">by admin</span>
+                  <% } %>
+                </div>
+                <div class="small text-muted">
+                  <%= o.area || "" %>
+                  <% if (o.customer_phone) { %>
+                    <span class="ms-2"><%= o.customer_phone %></span>
+                  <% } %>
+                </div>
+              </td>
+
+              <td class="text-nowrap"><%= qty %></td>
+
+              <td class="text-nowrap">
+                <span class="badge <%= badgeForStatus(st) %> text-uppercase"><%= st || "pending" %></span>
+              </td>
+
+              <td style="min-width:200px">
+                <form action="/admin/orders/<%= o.id %>/assign" method="POST" class="m-0">
+                  <select name="rider_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">Select rider</option>
+                    <% (riders || []).forEach(rr => { %>
+                      <option value="<%= rr.id %>" <%= String(rr.id) === rid ? "selected" : "" %>><%= rr.name %> (<%= rr.id %>)</option>
+                    <% }) %>
+                  </select>
+                  <div class="small text-muted mt-1">
+                    Assign karte hi order rider ke menu me show hoga
+                  </div>
+                </form>
+              </td>
+
+              <td class="text-nowrap">
+                <% if (riderName) { %>
+                  <span class="fw-semibold"><%= riderName %></span>
+                <% } else { %>
+                  <span class="text-muted">Not assigned</span>
+                <% } %>
+              </td>
+
+              <td class="text-nowrap <%= out > 0 ? "text-danger fw-semibold" : "text-muted" %>">
+                <%= out %> <%= currency %>
+              </td>
+
+              <td class="text-nowrap small text-muted"><%= fmtDate(o.created_at) %></td>
+
+              <td class="text-nowrap">
+                <div class="d-flex flex-wrap gap-1">
+                  <a href="/admin/orders/<%= o.id %>/status?status=pending" class="btn btn-sm btn-outline-secondary">Pending</a>
+                  <a href="/admin/orders/<%= o.id %>/status?status=assigned" class="btn btn-sm btn-outline-primary">Assigned</a>
+                  <a href="/admin/orders/<%= o.id %>/status?status=cancelled" class="btn btn-sm btn-outline-dark">Cancel</a>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+
+          <% if (!pendingOrders || pendingOrders.length === 0) { %>
+            <tr>
+              <td colspan="9" class="text-muted text-center py-4">No pending orders</td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card mb-3">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <strong>Assigned orders</strong>
+        <div class="small text-muted">
+          Assigned <strong><%= statusCounts.assigned %></strong>
+          Accepted <strong class="ms-2"><%= statusCounts.accepted %></strong>
+          On way <strong class="ms-2"><%= statusCounts.onway %></strong>
+        </div>
+      </div>
+      <div class="small text-muted">
+        Total <strong><%= assignedOrders.length %></strong>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th class="text-nowrap">Order</th>
+            <th>Customer</th>
+            <th class="text-nowrap">Bottles</th>
+            <th class="text-nowrap">Status</th>
+            <th class="text-nowrap">Rider assign</th>
+            <th class="text-nowrap">Rider</th>
+            <th class="text-nowrap">Outstanding</th>
+            <th class="text-nowrap">Created</th>
+            <th class="text-nowrap">Quick</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% (assignedOrders || []).forEach(o => { 
+              const st = String(o.status || "").toLowerCase();
+              const rid = String(o.rider_id || "");
+              const riderName = riderMap[rid] || "";
+              const out = outstandingVal(o);
+              const qty = qtyForRow(o);
+              const byAdmin = String(o.created_source || "").toLowerCase() === "admin";
+          %>
+            <tr>
+              <td class="text-nowrap fw-semibold">#<%= o.id %></td>
+
+              <td>
+                <div class="fw-semibold">
+                  <%= o.customer_name || "" %>
+                  <% if (byAdmin) { %>
+                    <span class="badge_admin">by admin</span>
+                  <% } %>
+                </div>
+                <div class="small text-muted">
+                  <%= o.area || "" %>
+                  <% if (o.customer_phone) { %>
+                    <span class="ms-2"><%= o.customer_phone %></span>
+                  <% } %>
+                </div>
+              </td>
+
+              <td class="text-nowrap"><%= qty %></td>
+
+              <td class="text-nowrap">
+                <span class="badge <%= badgeForStatus(st) %> text-uppercase"><%= st || "assigned" %></span>
+              </td>
+
+              <td style="min-width:200px">
+                <form action="/admin/orders/<%= o.id %>/assign" method="POST" class="m-0">
+                  <select name="rider_id" class="form-select form-select-sm" onchange="this.form.submit()">
+                    <option value="">Select rider</option>
+                    <% (riders || []).forEach(rr => { %>
+                      <option value="<%= rr.id %>" <%= String(rr.id) === rid ? "selected" : "" %>><%= rr.name %> (<%= rr.id %>)</option>
+                    <% }) %>
+                  </select>
+                  <div class="small text-muted mt-1">
+                    Assign karte hi order rider ke menu me show hoga
+                  </div>
+                </form>
+              </td>
+
+              <td class="text-nowrap">
+                <% if (riderName) { %>
+                  <span class="fw-semibold"><%= riderName %></span>
+                <% } else { %>
+                  <span class="text-muted">Not assigned</span>
+                <% } %>
+              </td>
+
+              <td class="text-nowrap <%= out > 0 ? "text-danger fw-semibold" : "text-muted" %>">
+                <%= out %> <%= currency %>
+              </td>
+
+              <td class="text-nowrap small text-muted"><%= fmtDate(o.created_at) %></td>
+
+              <td class="text-nowrap">
+                <div class="d-flex flex-wrap gap-1">
+                  <a href="/admin/orders/<%= o.id %>/status?status=pending" class="btn btn-sm btn-outline-secondary">Pending</a>
+                  <a href="/admin/orders/<%= o.id %>/status?status=assigned" class="btn btn-sm btn-outline-primary">Assigned</a>
+                  <a href="/admin/orders/<%= o.id %>/status?status=cancelled" class="btn btn-sm btn-outline-dark">Cancel</a>
+                </div>
+              </td>
+            </tr>
+          <% }) %>
+
+          <% if (!assignedOrders || assignedOrders.length === 0) { %>
+            <tr>
+              <td colspan="9" class="text-muted text-center py-4">No assigned orders</td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card mb-4">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <strong>Delivered orders</strong>
+        <div class="small text-muted">
+          Delivered <strong><%= statusCounts.delivered %></strong>
+        </div>
+      </div>
+      <div class="small text-muted">
+        Total <strong><%= deliveredOrders.length %></strong>
+      </div>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th class="text-nowrap">Order</th>
+            <th>Customer</th>
+            <th class="text-nowrap">Bottles</th>
+            <th class="text-nowrap">Status</th>
+            <th class="text-nowrap">Rider</th>
+            <th class="text-nowrap">Outstanding</th>
+            <th class="text-nowrap">Created</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% (deliveredOrders || []).forEach(o => { 
+              const st = String(o.status || "").toLowerCase();
+              const rid = String(o.rider_id || "");
+              const riderName = riderMap[rid] || "";
+              const out = outstandingVal(o);
+              const qty = qtyForRow(o);
+              const byAdmin = String(o.created_source || "").toLowerCase() === "admin";
+          %>
+            <tr>
+              <td class="text-nowrap fw-semibold">#<%= o.id %></td>
+
+              <td>
+                <div class="fw-semibold">
+                  <%= o.customer_name || "" %>
+                  <% if (byAdmin) { %>
+                    <span class="badge_admin">by admin</span>
+                  <% } %>
+                </div>
+                <div class="small text-muted">
+                  <%= o.area || "" %>
+                  <% if (o.customer_phone) { %>
+                    <span class="ms-2"><%= o.customer_phone %></span>
+                  <% } %>
+                </div>
+              </td>
+
+              <td class="text-nowrap"><%= qty %></td>
+
+              <td class="text-nowrap">
+                <span class="badge <%= badgeForStatus(st) %> text-uppercase"><%= st || "delivered" %></span>
+              </td>
+
+              <td class="text-nowrap">
+                <% if (riderName) { %>
+                  <span class="fw-semibold"><%= riderName %></span>
+                <% } else { %>
+                  <span class="text-muted">Unknown</span>
+                <% } %>
+              </td>
+
+              <td class="text-nowrap <%= out > 0 ? "text-danger fw-semibold" : "text-muted" %>">
+                <%= out %> <%= currency %>
+              </td>
+
+              <td class="text-nowrap small text-muted"><%= fmtDate(o.created_at) %></td>
+            </tr>
+          <% }) %>
+
+          <% if (!deliveredOrders || deliveredOrders.length === 0) { %>
+            <tr>
+              <td colspan="7" class="text-muted text-center py-4">No delivered orders</td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <% if (pendingJazz && pendingJazz.length > 0) { %>
+    <div class="card mb-4 border-warning">
+      <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+        <strong>Pending JazzCash verification</strong>
+        <span class="badge bg-dark"><%= pendingJazz.length %></span>
+      </div>
+
+      <div class="list-group list-group-flush">
+        <% pendingJazz.forEach(p => { %>
+          <div class="list-group-item d-flex flex-wrap justify-content-between align-items-center gap-2">
+            <div class="me-2">
+              <div class="fw-semibold">
+                Order #<%= p.id %>
+                <span class="text-muted">for</span>
+                <%= p.cust_name %>
+              </div>
+              <div class="small text-muted">
+                Amount <strong><%= safeNum(p.payment_amount) %> <%= currency %></strong>
+                <% if (p.delivered_at) { %>
+                  <span class="ms-2"><%= fmtDate(p.delivered_at) %></span>
+                <% } %>
+              </div>
+            </div>
+
+            <div class="d-flex flex-wrap gap-2">
+              <% if (p.wa_url) { %>
+                <a class="btn btn-sm btn-success" href="<%= p.wa_url %>" target="_blank" rel="noopener">WhatsApp</a>
+              <% } %>
+
+              <form action="/admin/orders/<%= p.id %>/verify_jazzcash" method="POST" class="m-0">
+                <button type="submit" class="btn btn-sm btn-primary">Mark received</button>
+              </form>
+            </div>
+          </div>
+        <% }) %>
+      </div>
+    </div>
+  <% } %>
+
+  <div class="card mb-4">
+    <div class="card-header d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <strong>Rider daily live ledger</strong>
+      <span class="small text-muted">Today</span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Rider</th>
+            <th class="text-nowrap">Deliveries</th>
+            <th class="text-nowrap">Bottles</th>
+            <th class="text-nowrap">Cash</th>
+            <th class="text-nowrap">JazzCash</th>
+            <th class="text-nowrap">Total</th>
+            <th class="text-nowrap">Due</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% (riderStats || []).forEach(r => { 
+              const t = (r && r.today) ? r.today : {};
+              const cash = safeNum(t.cash);
+              const jazz = safeNum(t.jazz);
+              const total = cash + jazz;
+              const due = safeNum(t.due);
+          %>
+            <tr>
+              <td class="text-nowrap">
+                <div class="fw-semibold"><%= r.name %></div>
+                <% if (r.phone) { %><div class="small text-muted"><%= r.phone %></div><% } %>
+              </td>
+              <td><%= safeNum(t.deliveries) %></td>
+              <td><%= safeNum(t.bottles) %></td>
+              <td class="text-success fw-semibold"><%= cash %></td>
+              <td class="text-info fw-semibold"><%= jazz %></td>
+              <td class="fw-semibold"><%= total %></td>
+              <td class="<%= due > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= due %></td>
+            </tr>
+          <% }) %>
+
+          <% if (!riderStats || riderStats.length === 0) { %>
+            <tr>
+              <td colspan="7" class="text-muted text-center py-4">No rider data</td>
+            </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<div id="spotModal" class="modal_backdrop hidden" aria-hidden="true">
+  <div class="modal_card" role="dialog" aria-modal="true">
+    <div class="modal_head">
+      <div style="font-size:16px;font-weight:800">Add spot filling</div>
+      <button type="button" id="closeSpotBtn" class="btn_ghost">Close</button>
+    </div>
+
+    <div class="modal_body">
+      <div class="form_row">
+        <label>Quantity</label>
+        <input id="spotQtyInput" type="number" min="1" max="10000" value="1" />
+      </div>
+
+      <div class="form_row">
+        <label>Unit price</label>
+        <input id="spotPriceInput" type="number" min="1" max="1000000" value="1" />
+      </div>
+
+      <div class="muted" id="spotPreviewText"></div>
+      <div id="spotMsg" class="msg"></div>
+
+      <div class="modal_actions">
+        <button type="button" id="spotSaveBtn" class="btn_primary">Add</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div id="generateOrderModal" class="modal_backdrop hidden" aria-hidden="true">
+  <div class="modal_card" role="dialog" aria-modal="true">
+    <div class="modal_head">
+      <div style="font-size:16px;font-weight:800">Generate Order</div>
+      <button type="button" id="closeGenerateOrderBtn" class="btn_ghost">Close</button>
+    </div>
+
+    <div class="modal_body">
+      <div class="form_row">
+        <label>Customer search</label>
+        <input id="custSearchInput" type="text" placeholder="Type name, id, phone" autocomplete="off" />
+        <div class="muted" style="margin-top:6px">Search result select karo phir quantity set karo</div>
+        <div id="custSearchResults" class="result_list hidden"></div>
+      </div>
+
+      <div id="selectedCustomerBox" class="selected_box hidden">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:800" id="selCustName"></div>
+            <div class="muted" id="selCustMeta"></div>
+          </div>
+          <div class="muted" id="selCustWater"></div>
+        </div>
+      </div>
+
+      <div class="form_row">
+        <label>Quantity</label>
+        <input id="orderQty" type="number" min="1" max="100" value="1" />
+      </div>
+
+      <div class="form_row">
+        <label>Assign rider optional</label>
+        <select id="orderRider">
+          <option value="">No rider</option>
+          <% if (typeof riders !== "undefined" && riders && riders.length) { %>
+            <% riders.forEach(function(r){ %>
+              <option value="<%= r.id %>"><%= r.name %> (<%= r.id %>)</option>
+            <% }) %>
+          <% } %>
+        </select>
+      </div>
+
+      <div id="genOrderMsg" class="msg"></div>
+
+      <div class="modal_actions">
+        <button type="button" id="createOrderBtn" class="btn_primary" disabled>Create order</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    const spotModal = document.getElementById("spotModal");
+    const spotOpenBtn = document.getElementById("btnSpotAdd");
+    const spotCloseBtn = document.getElementById("closeSpotBtn");
+    const spotSaveBtn = document.getElementById("spotSaveBtn");
+    const spotQtyInput = document.getElementById("spotQtyInput");
+    const spotPriceInput = document.getElementById("spotPriceInput");
+    const spotMsg = document.getElementById("spotMsg");
+    const spotPreviewText = document.getElementById("spotPreviewText");
+
+    function setSpotMsg(text, ok){
+      spotMsg.textContent = text || "";
+      spotMsg.className = "msg " + (ok ? "msg_ok" : (text ? "msg_err" : ""));
+    }
+
+    function previewSpot(){
+      let q = Number(spotQtyInput.value || 0);
+      let p = Number(spotPriceInput.value || 0);
+      if(!q || q < 0) q = 0;
+      if(!p || p < 0) p = 0;
+      const t = q * p;
+      spotPreviewText.textContent = t > 0 ? ("Total " + t + " <%= currency %>") : "";
+    }
+
+    function openSpot(){
+      if(!spotModal) return;
+      spotModal.classList.remove("hidden");
+      spotModal.setAttribute("aria-hidden", "false");
+      setSpotMsg("", true);
+      spotQtyInput.value = 1;
+      spotPriceInput.value = 1;
+      previewSpot();
+      setTimeout(()=> spotQtyInput.focus(), 50);
+    }
+
+    function closeSpot(){
+      if(!spotModal) return;
+      spotModal.classList.add("hidden");
+      spotModal.setAttribute("aria-hidden", "true");
+    }
+
+    function escCloseSpot(e){
+      if(e.key === "Escape") closeSpot();
+    }
+
+    function clickOutsideSpot(e){
+      if(e.target === spotModal) closeSpot();
+    }
+
+    spotOpenBtn && spotOpenBtn.addEventListener("click", openSpot);
+    spotCloseBtn && spotCloseBtn.addEventListener("click", closeSpot);
+    document.addEventListener("keydown", escCloseSpot);
+    spotModal && spotModal.addEventListener("click", clickOutsideSpot);
+
+    spotQtyInput && spotQtyInput.addEventListener("input", previewSpot);
+    spotPriceInput && spotPriceInput.addEventListener("input", previewSpot);
+
+    spotSaveBtn && spotSaveBtn.addEventListener("click", async function(){
+      let qty = Number(spotQtyInput.value || 0);
+      let price = Number(spotPriceInput.value || 0);
+
+      if(!qty || qty < 1){
+        setSpotMsg("Qty invalid", false);
+        return;
+      }
+      if(!price || price < 1){
+        setSpotMsg("Price invalid", false);
+        return;
+      }
+      if(qty > 10000) qty = 10000;
+      if(price > 1000000) price = 1000000;
+
+      setSpotMsg("Saving...", true);
+      spotSaveBtn.disabled = true;
+
+      try{
+        const res = await fetch("/admin/spot/add", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Accept": "application/json",
+            "X-Requested-With": "XMLHttpRequest"
+          },
+          credentials: "same-origin",
+          body: JSON.stringify({ qty, price })
+        });
+
+        let data = null;
+        try {
+          data = await res.json();
+        } catch (e) {
+          data = null;
+        }
+
+        if(!data || !data.ok){
+          setSpotMsg((data && data.msg) ? data.msg : "Save failed", false);
+          spotSaveBtn.disabled = false;
+          return;
+        }
+
+        setSpotMsg("Saved. Reloading...", true);
+        closeSpot();
+        setTimeout(()=> window.location.reload(), 300);
+      }catch(err){
+        setSpotMsg("Network error", false);
+        spotSaveBtn.disabled = false;
+      }
+    });
+
+  })();
+</script>
+
+<script>
+  (function(){
+    const modal = document.getElementById("generateOrderModal");
+    const openBtn = document.getElementById("btnGenOrder");
+    const closeBtn = document.getElementById("closeGenerateOrderBtn");
+    const input = document.getElementById("custSearchInput");
+    const results = document.getElementById("custSearchResults");
+
+    const selectedBox = document.getElementById("selectedCustomerBox");
+    const selName = document.getElementById("selCustName");
+    const selMeta = document.getElementById("selCustMeta");
+    const selWater = document.getElementById("selCustWater");
+
+    const qtyInput = document.getElementById("orderQty");
+    const riderSel = document.getElementById("orderRider");
+    const createBtn = document.getElementById("createOrderBtn");
+    const msg = document.getElementById("genOrderMsg");
+
+    let selectedCustomerId = "";
+    let timer = null;
+
+    function setMsg(text, ok){
+      msg.textContent = text || "";
+      msg.className = "msg " + (ok ? "msg_ok" : (text ? "msg_err" : ""));
+    }
+
+    function openModal(){
+      modal.classList.remove("hidden");
+      modal.setAttribute("aria-hidden", "false");
+      setMsg("", true);
+      input.value = "";
+      results.innerHTML = "";
+      results.classList.add("hidden");
+      selectedCustomerId = "";
+      selectedBox.classList.add("hidden");
+      createBtn.disabled = true;
+      qtyInput.value = 1;
+      riderSel.value = "";
+      setTimeout(()=> input.focus(), 50);
+    }
+
+    function closeModal(){
+      modal.classList.add("hidden");
+      modal.setAttribute("aria-hidden", "true");
+    }
+
+    function escClose(e){
+      if(e.key === "Escape") closeModal();
+    }
+
+    function clickOutside(e){
+      if(e.target === modal) closeModal();
+    }
+
+    openBtn && openBtn.addEventListener("click", openModal);
+    closeBtn && closeBtn.addEventListener("click", closeModal);
+    document.addEventListener("keydown", escClose);
+    modal.addEventListener("click", clickOutside);
+
+    async function runSearch(){
+      const q = (input.value || "").trim();
+      if(!q){
+        results.innerHTML = "";
+        results.classList.add("hidden");
+        setMsg("", true);
+        return;
+      }
+
+      setMsg("Searching...", true);
+
+      try{
+        const res = await fetch("/api/admin/customers/search?q=" + encodeURIComponent(q), {
+          credentials: "same-origin"
+        });
+        const data = await res.json();
+
+        if(!data || !data.ok){
+          setMsg("Search failed", false);
+          results.innerHTML = "";
+          results.classList.add("hidden");
+          return;
+        }
+
+        const list = data.customers || [];
+        if(!list.length){
+          setMsg("No customer found", false);
+          results.innerHTML = "";
+          results.classList.add("hidden");
+          return;
+        }
+
+        setMsg("", true);
+        results.classList.remove("hidden");
+        results.innerHTML = "";
+
+        list.forEach(c => {
+          const div = document.createElement("div");
+          div.className = "result_item";
+          const water = (c.water_name || "").toString();
+          const unit = Number(c.unit_price || 0);
+          const listPrice = Number(c.list_price || 0);
+
+          div.innerHTML =
+            "<div style='font-weight:800'>" + (c.name || "") + " (ID " + (c.id || "") + ")</div>" +
+            "<div class='muted'>" +
+              (c.phone ? ("Phone " + c.phone + "   ") : "") +
+              (c.area ? ("Area " + c.area) : "") +
+            "</div>" +
+            "<div class='muted'>" +
+              (water ? ("Water " + water + "   ") : "") +
+              ("Unit " + unit + "   ") +
+              (listPrice ? ("List " + listPrice) : "") +
+            "</div>";
+
+          div.addEventListener("click", function(){
+            selectedCustomerId = String(c.id || "");
+            selName.textContent = (c.name || "") + " (ID " + (c.id || "") + ")";
+            selMeta.textContent = (c.phone ? ("Phone " + c.phone + "   ") : "") + (c.area ? ("Area " + c.area) : "");
+            selWater.textContent = (c.water_name ? ("Water " + c.water_name + "   ") : "") + "Unit " + Number(c.unit_price || 0);
+            selectedBox.classList.remove("hidden");
+            results.classList.add("hidden");
+            createBtn.disabled = !selectedCustomerId;
+            setMsg("Customer selected", true);
+          });
+
+          results.appendChild(div);
+        });
+
+      }catch(err){
+        setMsg("Search error", false);
+        results.innerHTML = "";
+        results.classList.add("hidden");
+      }
+    }
+
+    input.addEventListener("input", function(){
+      clearTimeout(timer);
+      timer = setTimeout(runSearch, 250);
+    });
+
+    createBtn.addEventListener("click", async function(){
+      const cid = String(selectedCustomerId || "").trim();
+      if(!cid){
+        setMsg("Customer select karo", false);
+        return;
+      }
+
+      let qty = Number(qtyInput.value || 1);
+      if(!qty || qty < 1) qty = 1;
+      if(qty > 100) qty = 100;
+
+      const riderId = String(riderSel.value || "").trim();
+
+      setMsg("Creating order...", true);
+      createBtn.disabled = true;
+
+      try{
+        const res = await fetch("/api/admin/orders/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            customer_id: cid,
+            quantity: qty,
+            quantity_requested: qty,
+            rider_id: riderId
+          })
+        });
+
+        const data = await res.json();
+
+        if(!data || !data.ok){
+          setMsg((data && data.msg) ? data.msg : "Order create failed", false);
+          createBtn.disabled = false;
+          return;
+        }
+
+        setMsg("Order created. Reloading...", true);
+        setTimeout(()=> window.location.reload(), 450);
+
+      }catch(err){
+        setMsg("Order create error", false);
+        createBtn.disabled = false;
+      }
+    });
+
+  })();
+</script>
+
+<%- include('_footer') %> 

@@ -1,0 +1,208 @@
+<%- include("_header", { title: "Rider Daily", appName, logoUrl, user }) %>
+
+<div class="row g-3">
+  <div class="col-12">
+
+    <div class="card cardsoft p-4">
+      <div class="d-flex align-items-start justify-content-between flex-wrap gap-3">
+        <div>
+          <div class="h5 mb-1">Rider daily details</div>
+          <div class="smallmuted">
+            Name <span class="fw-semibold"><%= rider && rider.name ? rider.name : "" %></span>
+            <span class="mx-2">|</span>
+            ID <span class="fw-semibold"><%= rider && rider.id ? rider.id : "" %></span>
+            <span class="mx-2">|</span>
+            Phone <span class="fw-semibold"><%= rider && rider.phone ? rider.phone : "" %></span>
+          </div>
+
+          <% if (typeof resetInfo !== "undefined" && resetInfo && resetInfo.reset_at) { %>
+            <div class="smallmuted mt-2">Reset start <span class="fw-semibold"><%= resetInfo.reset_at %></span></div>
+          <% } %>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap">
+          <a class="btn btn-outline-dark btnround" href="/admin/riders">Back</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="row g-3 mt-0">
+
+      <div class="col-12 col-lg-5">
+        <div class="card cardsoft p-4">
+          <div class="h6 mb-3">Filters</div>
+
+          <form method="GET" action="/admin/riders/<%= rider && rider.id ? rider.id : "" %>/daily" class="row g-2 align-items-end">
+            <div class="col-12 col-md-6">
+              <label class="form-label mb-1 smallmuted">Daily date</label>
+              <input class="form-control form-control-sm" type="date" name="date" value="<%= (typeof ymd !== "undefined" ? (ymd || "") : "") %>">
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label mb-1 smallmuted">Range start</label>
+              <input class="form-control form-control-sm" type="date" name="from" value="<%= (typeof rangeFrom !== "undefined" ? (rangeFrom || "") : "") %>">
+            </div>
+
+            <div class="col-12 col-md-6">
+              <label class="form-label mb-1 smallmuted">Range end</label>
+              <input class="form-control form-control-sm" type="date" name="to" value="<%= (typeof rangeTo !== "undefined" ? (rangeTo || "") : "") %>">
+            </div>
+
+            <div class="col-12 d-flex gap-2">
+              <button class="btn btn-sm btn-primary btnround px-3" type="submit">Apply</button>
+              <a class="btn btn-sm btn-outline-dark btnround px-3" href="/admin/riders/<%= rider && rider.id ? rider.id : "" %>/daily">Reset</a>
+            </div>
+          </form>
+
+          <% if (typeof rangeFrom !== "undefined" && typeof rangeTo !== "undefined" && rangeFrom && rangeTo) { %>
+            <hr>
+            <div class="h6 mb-2">Range summary</div>
+            <div class="smallmuted mb-2"><%= rangeFrom %> to <%= rangeTo %></div>
+
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <tbody>
+                  <tr><td>Deliveries</td><td class="text-end fw-semibold"><%= (typeof rangeSummary !== "undefined" && rangeSummary) ? rangeSummary.deliveries : 0 %></td></tr>
+                  <tr><td>Clients</td><td class="text-end fw-semibold"><%= (typeof rangeSummary !== "undefined" && rangeSummary) ? rangeSummary.clients : 0 %></td></tr>
+                  <tr><td>Bottles</td><td class="text-end fw-semibold"><%= (typeof rangeSummary !== "undefined" && rangeSummary) ? rangeSummary.bottles : 0 %></td></tr>
+                  <tr><td>Returned</td><td class="text-end fw-semibold"><%= (typeof rangeSummary !== "undefined" && rangeSummary) ? rangeSummary.returned : 0 %></td></tr>
+                  <tr><td>Sales</td><td class="text-end fw-semibold"><%= (typeof rangeSummary !== "undefined" && rangeSummary) ? rangeSummary.sales : 0 %></td></tr>
+                  <tr><td>Cash</td><td class="text-end fw-semibold"><%= (typeof rangeSummary !== "undefined" && rangeSummary) ? rangeSummary.cash : 0 %></td></tr>
+                  <tr><td>JazzCash</td><td class="text-end fw-semibold"><%= (typeof rangeSummary !== "undefined" && rangeSummary) ? rangeSummary.jazz : 0 %></td></tr>
+                  <tr><td>Due</td><td class="text-end fw-semibold"><%= (typeof rangeSummary !== "undefined" && rangeSummary) ? rangeSummary.due : 0 %></td></tr>
+                </tbody>
+              </table>
+            </div>
+          <% } %>
+
+          <hr>
+
+          <form method="POST" action="/admin/riders/<%= rider && rider.id ? rider.id : "" %>/daily/reset" onsubmit="return confirm('Reset kar dein? Is ke baad counts reset date se start honge')">
+            <input type="hidden" name="redirectDate" value="<%= (typeof ymd !== "undefined" ? (ymd || "") : "") %>">
+            <button class="btn btn-outline-danger btnround" type="submit">Reset deliveries from today</button>
+            <div class="smallmuted mt-2">
+              Reset ka matlab reporting reset date se count hogi. Data delete nahin hota
+            </div>
+          </form>
+
+        </div>
+      </div>
+
+      <div class="col-12 col-lg-7">
+        <div class="card cardsoft p-4">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+            <div class="h6 mb-0">Summary</div>
+            <div class="smallmuted">Daily date <span class="fw-semibold"><%= (typeof ymd !== "undefined" ? (ymd || "") : "") %></span></div>
+          </div>
+
+          <div class="table-responsive">
+            <table class="table table-sm align-middle">
+              <thead>
+                <tr>
+                  <th>Period</th>
+                  <th class="text-end">Deliveries</th>
+                  <th class="text-end">Clients</th>
+                  <th class="text-end">Bottles</th>
+                  <th class="text-end">Returned</th>
+                  <th class="text-end">Sales</th>
+                  <th class="text-end">Cash</th>
+                  <th class="text-end">Jazz</th>
+                  <th class="text-end">Due</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="fw-semibold">Daily</td>
+                  <td class="text-end"><%= (typeof dailySummary !== "undefined" && dailySummary) ? dailySummary.deliveries : 0 %></td>
+                  <td class="text-end"><%= (typeof dailySummary !== "undefined" && dailySummary) ? dailySummary.clients : 0 %></td>
+                  <td class="text-end"><%= (typeof dailySummary !== "undefined" && dailySummary) ? dailySummary.bottles : 0 %></td>
+                  <td class="text-end"><%= (typeof dailySummary !== "undefined" && dailySummary) ? dailySummary.returned : 0 %></td>
+                  <td class="text-end"><%= (typeof dailySummary !== "undefined" && dailySummary) ? dailySummary.sales : 0 %></td>
+                  <td class="text-end"><%= (typeof dailySummary !== "undefined" && dailySummary) ? dailySummary.cash : 0 %></td>
+                  <td class="text-end"><%= (typeof dailySummary !== "undefined" && dailySummary) ? dailySummary.jazz : 0 %></td>
+                  <td class="text-end"><%= (typeof dailySummary !== "undefined" && dailySummary) ? dailySummary.due : 0 %></td>
+                </tr>
+
+                <tr>
+                  <td class="fw-semibold">Weekly</td>
+                  <td class="text-end"><%= (typeof weeklySummary !== "undefined" && weeklySummary) ? weeklySummary.deliveries : 0 %></td>
+                  <td class="text-end"><%= (typeof weeklySummary !== "undefined" && weeklySummary) ? weeklySummary.clients : 0 %></td>
+                  <td class="text-end"><%= (typeof weeklySummary !== "undefined" && weeklySummary) ? weeklySummary.bottles : 0 %></td>
+                  <td class="text-end"><%= (typeof weeklySummary !== "undefined" && weeklySummary) ? weeklySummary.returned : 0 %></td>
+                  <td class="text-end"><%= (typeof weeklySummary !== "undefined" && weeklySummary) ? weeklySummary.sales : 0 %></td>
+                  <td class="text-end"><%= (typeof weeklySummary !== "undefined" && weeklySummary) ? weeklySummary.cash : 0 %></td>
+                  <td class="text-end"><%= (typeof weeklySummary !== "undefined" && weeklySummary) ? weeklySummary.jazz : 0 %></td>
+                  <td class="text-end"><%= (typeof weeklySummary !== "undefined" && weeklySummary) ? weeklySummary.due : 0 %></td>
+                </tr>
+
+                <tr>
+                  <td class="fw-semibold">Monthly</td>
+                  <td class="text-end"><%= (typeof monthlySummary !== "undefined" && monthlySummary) ? monthlySummary.deliveries : 0 %></td>
+                  <td class="text-end"><%= (typeof monthlySummary !== "undefined" && monthlySummary) ? monthlySummary.clients : 0 %></td>
+                  <td class="text-end"><%= (typeof monthlySummary !== "undefined" && monthlySummary) ? monthlySummary.bottles : 0 %></td>
+                  <td class="text-end"><%= (typeof monthlySummary !== "undefined" && monthlySummary) ? monthlySummary.returned : 0 %></td>
+                  <td class="text-end"><%= (typeof monthlySummary !== "undefined" && monthlySummary) ? monthlySummary.sales : 0 %></td>
+                  <td class="text-end"><%= (typeof monthlySummary !== "undefined" && monthlySummary) ? monthlySummary.cash : 0 %></td>
+                  <td class="text-end"><%= (typeof monthlySummary !== "undefined" && monthlySummary) ? monthlySummary.jazz : 0 %></td>
+                  <td class="text-end"><%= (typeof monthlySummary !== "undefined" && monthlySummary) ? monthlySummary.due : 0 %></td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="smallmuted mt-2">
+            Note: Weekly aur Monthly backend se calculate ho kar aate hain. Agar zeros hain to controller me summaries pass nahin ho rahi
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12">
+        <div class="card cardsoft p-4">
+          <div class="d-flex align-items-center justify-content-between flex-wrap gap-2 mb-2">
+            <div class="h6 mb-0">Delivered orders</div>
+          </div>
+
+          <% if (!orders || !orders.length) { %>
+            <div class="smallmuted">Is date par koi delivered order nahin mila</div>
+          <% } else { %>
+            <div class="table-responsive">
+              <table class="table table-sm align-middle">
+                <thead>
+                  <tr>
+                    <th>Order</th>
+                    <th>Customer</th>
+                    <th>Area</th>
+                    <th class="text-end">Qty</th>
+                    <th class="text-end">Empty</th>
+                    <th>Method</th>
+                    <th class="text-end">Paid</th>
+                    <th>Delivered at</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <% orders.forEach(function(o){ %>
+                    <tr>
+                      <td class="fw-semibold"><%= o.id %></td>
+                      <td><%= o.customer_name || "" %></td>
+                      <td class="smallmuted"><%= o.area || "" %></td>
+                      <td class="text-end"><%= (o.delivered_qty && Number(o.delivered_qty) > 0) ? o.delivered_qty : o.quantity_requested %></td>
+                      <td class="text-end"><%= o.empty_returned_qty || 0 %></td>
+                      <td><%= o.payment_method || "" %></td>
+                      <td class="text-end"><%= o.payment_amount || 0 %></td>
+                      <td class="smallmuted"><%= o.delivered_at || "" %></td>
+                    </tr>
+                  <% }) %>
+                </tbody>
+              </table>
+            </div>
+          <% } %>
+
+        </div>
+      </div>
+
+    </div>
+
+  </div>
+</div>
+
+<%- include("_footer") %>

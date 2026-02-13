@@ -1,0 +1,219 @@
+<%- include('_header', { title: "Expenses", appName, logoUrl, user }) %>
+
+<%
+  const safeNum = (v) => Number(v || 0) || 0;
+
+  const salesToday = safeNum(stats && stats.salesToday);
+  const cashInHand = safeNum(stats && stats.cashInHand);
+  const jazzInHand = safeNum(stats && stats.totalJazz);
+
+  const expTodayTotal = safeNum(stats && stats.totalExpenses);
+  const expCashToday = safeNum(stats && stats.expCashToday);
+  const expJazzToday = safeNum(stats && stats.expJazzToday);
+
+  const cashNet = (stats && stats.cashNet !== undefined && stats.cashNet !== null)
+    ? safeNum(stats.cashNet)
+    : Math.max(0, cashInHand - expCashToday);
+
+  const jazzNet = (stats && stats.jazzNet !== undefined && stats.jazzNet !== null)
+    ? safeNum(stats.jazzNet)
+    : Math.max(0, jazzInHand - expJazzToday);
+
+  const netProfit = salesToday - expTodayTotal;
+
+  const allExp = safeNum(
+    (typeof totalExpensesAll !== "undefined" && totalExpensesAll !== null) ? totalExpensesAll :
+    (typeof totalExpenses !== "undefined" && totalExpenses !== null) ? totalExpenses :
+    (typeof total !== "undefined" && total !== null) ? total :
+    0
+  );
+
+  const todayExpSum = safeNum(
+    (typeof totalExpensesToday !== "undefined" && totalExpensesToday !== null) ? totalExpensesToday :
+    (typeof todayTotal !== "undefined" && todayTotal !== null) ? todayTotal :
+    expTodayTotal
+  );
+%>
+
+<div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
+  <div>
+    <h1 class="h4 m-0">Expenses</h1>
+    <div class="text-muted small">Today <strong><%= today %></strong></div>
+  </div>
+  <div class="d-flex gap-2 flex-wrap">
+    <a class="btn btn-outline-dark btn-sm" href="/admin">Back to dashboard</a>
+  </div>
+</div>
+
+<div class="row g-3 mb-3">
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card h-100">
+      <div class="card-body">
+        <div class="text-muted small">Today sales</div>
+        <div class="fs-3 fw-bold"><%= salesToday %> <span class="fs-6"><%= currency %></span></div>
+        <div class="text-muted small">Net profit depends on expenses</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card h-100 border-success">
+      <div class="card-body">
+        <div class="text-muted small">Cash collected</div>
+        <div class="fs-3 fw-bold text-success"><%= cashInHand %> <span class="fs-6 text-muted"><%= currency %></span></div>
+        <div class="small text-muted">Cash expense <strong><%= expCashToday %></strong> <%= currency %></div>
+        <div class="small">Net cash <strong><%= cashNet %></strong> <%= currency %></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card h-100 border-info">
+      <div class="card-body">
+        <div class="text-muted small">JazzCash collected</div>
+        <div class="fs-3 fw-bold text-info"><%= jazzInHand %> <span class="fs-6 text-muted"><%= currency %></span></div>
+        <div class="small text-muted">Jazz expense <strong><%= expJazzToday %></strong> <%= currency %></div>
+        <div class="small">Net jazz <strong><%= jazzNet %></strong> <%= currency %></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-12 col-md-6 col-lg-3">
+    <div class="card h-100 border-warning">
+      <div class="card-body">
+        <div class="text-muted small">Today expenses</div>
+        <div class="fs-3 fw-bold text-warning"><%= todayExpSum %> <span class="fs-6 text-muted"><%= currency %></span></div>
+        <div class="small text-muted">All time expenses <strong><%= allExp %></strong> <%= currency %></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body">
+    <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <div>
+        <div class="fw-semibold">Today net</div>
+        <div class="text-muted small">Net profit equals sales minus expenses</div>
+      </div>
+      <div class="fs-4 fw-bold"><%= netProfit %> <span class="fs-6 text-muted"><%= currency %></span></div>
+    </div>
+
+    <div class="table-responsive mt-3">
+      <table class="table table-sm align-middle mb-0">
+        <tbody>
+          <tr>
+            <td class="text-muted">Today sales</td>
+            <td class="fw-semibold"><%= salesToday %> <%= currency %></td>
+          </tr>
+          <tr>
+            <td class="text-muted">Today expenses</td>
+            <td class="fw-semibold"><%= expTodayTotal %> <%= currency %></td>
+          </tr>
+          <tr>
+            <td class="text-muted">Net profit</td>
+            <td class="fw-semibold"><%= netProfit %> <%= currency %></td>
+          </tr>
+          <tr>
+            <td class="text-muted">Net cash after cash expenses</td>
+            <td class="fw-semibold"><%= cashNet %> <%= currency %></td>
+          </tr>
+          <tr>
+            <td class="text-muted">Net jazz after jazz expenses</td>
+            <td class="fw-semibold"><%= jazzNet %> <%= currency %></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-header fw-semibold">Add expense</div>
+  <div class="card-body">
+    <form method="post" action="/admin/expenses/add">
+      <div class="row g-2">
+        <div class="col-12 col-md-2">
+          <label class="form-label mb-1">Date</label>
+          <input type="date" name="exp_date" value="<%= today %>" class="form-control">
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label mb-1">Category</label>
+          <input name="category" placeholder="Category" required class="form-control">
+        </div>
+
+        <div class="col-12 col-md-2">
+          <label class="form-label mb-1">Amount</label>
+          <input type="number" name="amount" placeholder="Amount" required class="form-control" min="0">
+        </div>
+
+        <div class="col-12 col-md-2">
+          <label class="form-label mb-1">Method</label>
+          <select name="method" class="form-select">
+            <option value="cash">cash</option>
+            <option value="jazzcash">jazzcash</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-md-1">
+          <label class="form-label mb-1">Staff</label>
+          <input name="staff_id" placeholder="Id" class="form-control">
+        </div>
+
+        <div class="col-12 col-md-2">
+          <label class="form-label mb-1">Note</label>
+          <input name="note" placeholder="Note" class="form-control">
+        </div>
+
+        <div class="col-12">
+          <button type="submit" class="btn btn-primary w-100 mt-2">Save expense</button>
+        </div>
+      </div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-header fw-semibold d-flex flex-wrap justify-content-between align-items-center gap-2">
+    <span>Expenses list</span>
+    <span class="text-muted small">Latest first</span>
+  </div>
+
+  <div class="table-responsive">
+    <table class="table table-sm mb-0 align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>ID</th>
+          <th>Date</th>
+          <th>Category</th>
+          <th>Amount</th>
+          <th>Method</th>
+          <th>Staff</th>
+          <th>Note</th>
+        </tr>
+      </thead>
+      <tbody>
+        <% if (expenses && expenses.length) { %>
+          <% expenses.forEach(function(e){ %>
+            <tr>
+              <td class="text-nowrap"><%= e.id %></td>
+              <td class="text-nowrap"><%= e.exp_date %></td>
+              <td><%= e.category %></td>
+              <td class="fw-semibold"><%= safeNum(e.amount) %></td>
+              <td class="text-nowrap"><%= e.method %></td>
+              <td class="text-nowrap"><%= e.staff_id || "" %></td>
+              <td><%= e.note || "" %></td>
+            </tr>
+          <% }) %>
+        <% } else { %>
+          <tr>
+            <td colspan="7" class="text-center text-muted py-4">No expenses found</td>
+          </tr>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+
+<%- include('_footer') %>

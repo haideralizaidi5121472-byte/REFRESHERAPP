@@ -1,0 +1,214 @@
+<%- include('_header') %>
+
+<%
+  const u = (typeof user !== 'undefined' && user) ? user : {};
+  const s = (typeof summary !== 'undefined' && summary) ? summary : {};
+  const t = (typeof totals !== 'undefined' && totals) ? totals : {};
+  const list = (typeof orders !== 'undefined' && Array.isArray(orders)) ? orders : [];
+%>
+
+<div class="container mt-3">
+  <div class="d-flex align-items-center justify-content-between mb-2">
+    <h4 class="m-0">Rider: <%= u.name || '' %></h4>
+    <a class="btn btn-sm btn-outline-danger" href="/logout">Logout</a>
+  </div>
+
+  <div class="card mb-3 bg-light">
+    <div class="card-body py-2 d-flex justify-content-between flex-wrap gap-2">
+      <span>Today Cash: <strong><%= s.cash || 0 %></strong></span>
+      <span>Today Jazz: <strong><%= s.jazz || 0 %></strong></span>
+      <span>Assigned Orders: <strong><%= list.length %></strong></span>
+      <span>Total Deliveries: <strong><%= t.deliveries || 0 %></strong></span>
+      <span>Total Bottles Delivered: <strong><%= t.bottles || 0 %></strong></span>
+    </div>
+  </div>
+
+  <% if(list.length === 0) { %>
+    <div class="alert alert-info">No pending orders assigned</div>
+  <% } %>
+
+  <% list.forEach(o => { 
+      const reqQty = Number(o.quantity_requested || 0);
+      const unit = Number(o.unit_price || 0);
+      const initialTotal = reqQty * unit;
+
+      const phone = (o.customer_phone || '').toString().trim();
+      const hasPhone = phone.length > 0;
+
+      const mapUrl = (o.map_url || '').toString().trim();
+      const addr = (o.address || '').toString().trim();
+      const googleMapSearch = "https://www.google.com/maps/search/?api=1&query=" + encodeURIComponent(mapUrl || addr || (o.customer_name || ''));
+      const finalMap = mapUrl ? mapUrl : googleMapSearch;
+
+      const status = (o.status || 'pending').toString();
+      const badge =
+        status === 'pending' ? 'secondary' :
+        status === 'assigned' ? 'warning' :
+        status === 'accepted' ? 'info' :
+        status === 'onway' ? 'primary' :
+        status === 'cancelled' ? 'dark' :
+        'secondary';
+
+      const waText =
+        "Assalam o Alaikum " +
+        (o.customer_name || "") +
+        ", aap ka order #" + (o.id || "") +
+        " deliver karne aa raha hun. Location share kar dein agar zaroorat ho. Shukriya";
+
+      const waUrl = (typeof waLink !== 'undefined' && waLink) ? waLink(phone, waText) : ("https://wa.me/" + (phone || ""));
+  %>
+
+    <div class="card mb-3 shadow-sm">
+      <div class="card-body">
+
+        <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
+          <div>
+            <h5 class="card-title m-0"><%= o.customer_name %></h5>
+            <div class="text-muted small mt-1">
+              Order ID: <strong><%= o.id %></strong>
+              <span class="ms-2 badge bg-<%= badge %>"><%= status %></span>
+            </div>
+          </div>
+
+          <div class="text-end">
+            <span class="badge bg-primary"><%= reqQty %> Btl</span>
+            <div class="text-muted small mt-1">Unit: <strong><%= unit %></strong></div>
+          </div>
+        </div>
+
+        <div class="mt-2 d-flex flex-wrap gap-2">
+          <% if(hasPhone) { %>
+            <a href="tel:<%= phone %>" class="btn btn-sm btn-outline-secondary">Call</a>
+            <a href="<%= waUrl %>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-success">WhatsApp</a>
+          <% } else { %>
+            <button type="button" class="btn btn-sm btn-outline-secondary" disabled>Call</button>
+            <button type="button" class="btn btn-sm btn-outline-success" disabled>WhatsApp</button>
+          <% } %>
+
+          <a href="<%= finalMap %>" target="_blank" rel="noopener" class="btn btn-sm btn-outline-secondary">Map</a>
+
+          <form action="/rider/orders/<%= o.id %>/status" method="POST" class="d-inline">
+            <input type="hidden" name="status" value="accepted" />
+            <button type="submit" class="btn btn-sm btn-outline-primary" <%= (status === 'accepted' || status === 'onway') ? 'disabled' : '' %>>
+              Accept
+            </button>
+          </form>
+
+          <form action="/rider/orders/<%= o.id %>/status" method="POST" class="d-inline">
+            <input type="hidden" name="status" value="onway" />
+            <button type="submit" class="btn btn-sm btn-outline-primary" <%= (status === 'onway') ? 'disabled' : '' %>>
+              On the way
+            </button>
+          </form>
+        </div>
+
+        <% if(addr) { %>
+          <p class="text-muted small mt-2 mb-0"><%= addr %></p>
+        <% } %>
+
+        <hr class="my-3">
+
+        <form action="/complete-order/<%= o.id %>" method="POST" class="rider-complete-form" data-unit="<%= unit %>" data-reqqty="<%= reqQty %>">
+          <div class="row g-2">
+            <div class="col-6">
+              <label class="form-label mb-1">Delivered</label>
+              <input type="number" name="delivered_qty" value="<%= reqQty %>" min="0" class="form-control js-delivered">
+            </div>
+
+            <div class="col-6">
+              <label class="form-label mb-1">Empty Back</label>
+              <input type="number" name="empty_qty" value="<%= reqQty %>" min="0" class="form-control">
+            </div>
+
+            <div class="col-6">
+              <label class="form-label mb-1">Payment Method</label>
+              <select name="payment_method" class="form-select js-method">
+                <option value="cash">Cash</option>
+                <option value="jazzcash">JazzCash</option>
+              </select>
+            </div>
+
+            <div class="col-6">
+              <label class="form-label mb-1">Amount Received</label>
+              <input type="number" name="payment_amount" value="<%= initialTotal %>" min="0" class="form-control js-amount">
+            </div>
+
+            <div class="col-12 mt-2">
+              <div class="alert alert-secondary py-2 text-center m-0">
+                <div><strong>Bill Amount: <span class="js-bill"><%= initialTotal %></span> PKR</strong></div>
+                <div class="small text-muted">Due: <strong><span class="js-due">0</span></strong></div>
+              </div>
+            </div>
+
+            <div class="col-12">
+              <input type="text" name="note" placeholder="Note optional" class="form-control">
+            </div>
+          </div>
+
+          <button type="submit" class="btn btn-success w-100 mt-3">Mark Delivered</button>
+        </form>
+
+      </div>
+    </div>
+  <% }) %>
+</div>
+
+<script>
+  (function () {
+    function toNum(v) {
+      var n = Number(v);
+      return isNaN(n) ? 0 : n;
+    }
+
+    function recalc(form) {
+      var unit = toNum(form.getAttribute("data-unit"));
+      var deliveredEl = form.querySelector(".js-delivered");
+      var amountEl = form.querySelector(".js-amount");
+      var methodEl = form.querySelector(".js-method");
+
+      var billEl = form.querySelector(".js-bill");
+      var dueEl = form.querySelector(".js-due");
+
+      var deliveredQty = deliveredEl ? toNum(deliveredEl.value) : 0;
+      if (deliveredQty < 0) deliveredQty = 0;
+
+      var bill = deliveredQty * unit;
+
+      if (billEl) billEl.textContent = String(bill);
+
+      var method = methodEl ? String(methodEl.value || "cash").toLowerCase() : "cash";
+      var amt = amountEl ? toNum(amountEl.value) : 0;
+
+      if (method === "jazzcash" && amountEl && (amountEl.value === "" || toNum(amountEl.value) === 0)) {
+        amountEl.value = bill;
+        amt = bill;
+      }
+
+      var due = 0;
+      due = Math.max(0, bill - amt);
+
+      if (dueEl) dueEl.textContent = String(due);
+    }
+
+    var forms = document.querySelectorAll(".rider-complete-form");
+    forms.forEach(function (form) {
+      var deliveredEl = form.querySelector(".js-delivered");
+      var amountEl = form.querySelector(".js-amount");
+      var methodEl = form.querySelector(".js-method");
+
+      if (deliveredEl) deliveredEl.addEventListener("input", function () { recalc(form); });
+      if (amountEl) amountEl.addEventListener("input", function () { recalc(form); });
+      if (methodEl) methodEl.addEventListener("change", function () {
+        var unit = Number(form.getAttribute("data-unit") || 0);
+        var deliveredQty = deliveredEl ? Number(deliveredEl.value || 0) : 0;
+        var bill = deliveredQty * unit;
+        if (methodEl.value === "jazzcash" && amountEl) amountEl.value = bill;
+        recalc(form);
+      });
+
+      recalc(form);
+    });
+  })();
+</script>
+
+<%- include('_footer') %>

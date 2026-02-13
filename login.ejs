@@ -1,0 +1,102 @@
+<%- include("_header", { title: "Login", appName, logoUrl, user }) %>
+
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-8">
+    <div class="card cardsoft p-4">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+          <div class="h4 mb-1">Login</div>
+          <div class="smallmuted">Select role and enter your id. Admin uses username and password.</div>
+        </div>
+      </div>
+
+      <% if (msg) { %>
+        <div class="alert alert-warning"><%= msg %></div>
+      <% } %>
+
+      <form method="post" action="/login" class="row g-3">
+        <div class="col-12 col-md-4">
+          <label class="form-label">Role</label>
+          <select name="role" class="form-select" id="roleSel" required>
+            <option value="">Select</option>
+            <option value="customer">Customer</option>
+            <option value="rider">Rider</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+
+        <div class="col-12 col-md-8" id="idWrap" style="display:none">
+          <label class="form-label">ID</label>
+          <input name="id" class="form-control" placeholder="Example C0001 or R001">
+          <div class="form-text">Customer uses Customer ID, Rider uses Rider ID</div>
+        </div>
+
+
+        <div class="col-12 col-md-8" id="pinWrap" style="display:none">
+          <label class="form-label">PIN</label>
+          <input name="pin" type="password" class="form-control" placeholder="Customer PIN">
+          <div class="form-text">If your PIN is set, enter it to open customer dashboard</div>
+        </div>
+
+        <div class="col-12 col-md-6" id="userWrap" style="display:none">
+          <label class="form-label">Username</label>
+          <input name="username" class="form-control" placeholder="admin">
+        </div>
+
+        <div class="col-12 col-md-6" id="passWrap" style="display:none">
+          <label class="form-label">Password</label>
+          <input name="password" type="password" class="form-control" placeholder="Your admin password">
+        </div>
+
+        <div class="col-12">
+          <button class="btn btn-primary btnround px-4">Open dashboard</button>
+        </div>
+      </form>
+
+      <hr class="my-4">
+
+      <div class="smallmuted">
+        Default admin credentials on first run
+        <div>Username admin</div>
+        <div>Password refresher123</div>
+        <div class="mt-2">Change it by setting environment variable ADMIN_PASSWORD before first start.</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  const roleSel = document.getElementById("roleSel");
+  const idWrap = document.getElementById("idWrap");
+  const userWrap = document.getElementById("userWrap");
+  const passWrap = document.getElementById("passWrap");
+  const pinWrap = document.getElementById("pinWrap");
+
+  function sync() {
+    const r = roleSel.value;
+    if (r === "admin") {
+      idWrap.style.display = "none";
+      pinWrap.style.display = "none";
+      userWrap.style.display = "";
+      passWrap.style.display = "";
+    } else if (r === "customer") {
+      idWrap.style.display = "";
+      pinWrap.style.display = "";
+      userWrap.style.display = "none";
+      passWrap.style.display = "none";
+    } else if (r === "rider") {
+      idWrap.style.display = "";
+      pinWrap.style.display = "none";
+      userWrap.style.display = "none";
+      passWrap.style.display = "none";
+    } else {
+      idWrap.style.display = "none";
+      pinWrap.style.display = "none";
+      userWrap.style.display = "none";
+      passWrap.style.display = "none";
+    }
+  }
+  roleSel.addEventListener("change", sync);
+</script>
+
+<%- include("_footer") %>

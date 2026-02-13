@@ -1,0 +1,321 @@
+<%- include("_header", { title: "Udhaar", appName, logoUrl, user }) %>
+
+<%
+  const safeNum = (v) => Number(v || 0) || 0;
+
+  const safeId = (v) => {
+    try { return String(v || "").replace(/[^a-zA-Z0-9]/g, "_"); }
+    catch (e) { return "x"; }
+  };
+
+  const fmtMoney = (n) => safeNum(n);
+
+  const _currency = (typeof currency !== "undefined" && currency) ? currency : "PKR";
+  const _selectedDate = (typeof selectedDate !== "undefined" && selectedDate) ? String(selectedDate) : "";
+  const _mode = (typeof mode !== "undefined" && mode) ? String(mode) : "day";
+
+  const _customersDay = (typeof customersDay !== "undefined") ? customersDay : undefined;
+  const _customersAll = (typeof customersAll !== "undefined") ? customersAll : undefined;
+  const _customersAllTime = (typeof customersAllTime !== "undefined") ? customersAllTime : undefined;
+  const _customers = (typeof customers !== "undefined") ? customers : undefined;
+
+  const dayRaw = Array.isArray(_customersDay) ? _customersDay : (Array.isArray(_customers) ? _customers : []);
+  const allRaw = Array.isArray(_customersAll) ? _customersAll : (Array.isArray(_customersAllTime) ? _customersAllTime : dayRaw);
+
+  const viewMode = (_mode === "all") ? "all" : "day";
+  const todayLabel = _selectedDate ? _selectedDate : "Today";
+
+  const dayOutstandingOf = (c) => safeNum(c && (c.outstanding_day != null ? c.outstanding_day : c.outstanding));
+  const totalOutstandingOf = (c) => safeNum(c && (c.outstanding_total != null ? c.outstanding_total : c.outstanding));
+
+  const dayTotalOf = (c) => {
+    if (!c) return 0;
+    if (c.udhaar_day_total != null) return safeNum(c.udhaar_day_total);
+    if (c.day_total != null) return safeNum(c.day_total);
+    if (c.total_day != null) return safeNum(c.total_day);
+    if (c.total_for_day != null) return safeNum(c.total_for_day);
+    if (c.today_total != null) return safeNum(c.today_total);
+    return dayOutstandingOf(c);
+  };
+
+  const listDay = dayRaw.filter(c => dayOutstandingOf(c) > 0);
+  const listAll = allRaw.filter(c => totalOutstandingOf(c) > 0);
+
+  const activeList = (viewMode === "all") ? listAll : listDay;
+
+  const dayTotalSum = dayRaw.reduce((s, c) => s + dayTotalOf(c), 0);
+  const dayRemainingSum = dayRaw.reduce((s, c) => s + dayOutstandingOf(c), 0);
+
+  const allRemainingSum = allRaw.reduce((s, c) => s + totalOutstandingOf(c), 0);
+
+  const buildLink = (m, d) => {
+    const qs = [];
+    if (m) qs.push("mode=" + encodeURIComponent(String(m)));
+    if (d) qs.push("date=" + encodeURIComponent(String(d)));
+    return "/admin/udhaar" + (qs.length ? ("?" + qs.join("&")) : "");
+  };
+
+  const dayLink = (d) => buildLink("day", d);
+  const allLink = (d) => buildLink("all", d);
+
+  const hasAnyDayRows = Array.isArray(dayRaw) && dayRaw.length > 0;
+%>
+
+<div class="card cardsoft p-3 p-md-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div>
+      <div class="h5 mb-1">Udhaar</div>
+      <div class="smallmuted">Business day starts 4 00 AM</div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <form id="udhaarFilterForm" method="get" action="/admin/udhaar" class="d-flex flex-wrap gap-2 align-items-center m-0">
+        <input id="udhaarDate" class="form-control form-control-sm" type="date" name="date" value="<%= _selectedDate %>" style="max-width:180px">
+        <select id="udhaarMode" class="form-select form-select-sm" name="mode" style="max-width:160px">
+          <option value="day" <%= viewMode === "day" ? "selected" : "" %>>Day view</option>
+          <option value="all" <%= viewMode === "all" ? "selected" : "" %>>All time view</option>
+        </select>
+        <button class="btn btn-sm btn-outline-primary btnround" type="submit">Filter</button>
+        <a class="btn btn-sm btn-outline-dark btnround" href="/admin/udhaar">Today</a>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    (function(){
+      var d = document.getElementById("udhaarDate");
+      var m = document.getElementById("udhaarMode");
+      function go(){
+        var dateVal = d && d.value ? d.value : "";
+        var modeVal = m && m.value ? m.value : "day";
+        var u = new URL(window.location.href);
+        u.pathname = "/admin/udhaar";
+        u.searchParams.set("mode", modeVal);
+        if (dateVal) u.searchParams.set("date", dateVal);
+        else u.searchParams.delete("date");
+        window.location.href = u.toString();
+      }
+      if (d) d.addEventListener("change", go);
+      if (m) m.addEventListener("change", go);
+    })();
+  </script>
+
+  <hr class="my-3">
+
+  <div class="row g-2">
+    <div class="col-12 col-md-6">
+      <a href="<%= dayLink(_selectedDate) %>" class="text-decoration-none">
+        <div class="p-3 border rounded h-100">
+          <div class="smallmuted">Udhaar for <%= todayLabel %></div>
+          <div class="h4 m-0"><%= fmtMoney(dayTotalSum) %> <%= _currency %></div>
+
+          <div class="d-flex flex-wrap gap-2 mt-2">
+            <span class="badge bg-light text-dark border">
+              Remaining <b><%= fmtMoney(dayRemainingSum) %></b> <%= _currency %>
+            </span>
+            <span class="badge bg-light text-dark border">
+              Cleared <b><%= fmtMoney(dayTotalSum - dayRemainingSum) %></b> <%= _currency %>
+            </span>
+          </div>
+
+          <div class="small text-muted mt-2">Click to see only this day customers</div>
+        </div>
+      </a>
+    </div>
+
+    <div class="col-12 col-md-6">
+      <a href="<%= allLink(_selectedDate) %>" class="text-decoration-none">
+        <div class="p-3 border rounded h-100">
+          <div class="smallmuted">Total outstanding all time</div>
+          <div class="h4 m-0"><%= fmtMoney(allRemainingSum) %> <%= _currency %></div>
+          <div class="small text-muted mt-1">Click to see all customers who have pending</div>
+        </div>
+      </a>
+    </div>
+  </div>
+
+  <hr class="my-3">
+
+  <% if (viewMode === "day") { %>
+    <% if (!hasAnyDayRows) { %>
+      <div class="text-muted text-center py-4">
+        No udhaar on this date
+      </div>
+    <% } else if (dayRemainingSum <= 0) { %>
+      <div class="text-muted text-center py-4">
+        All cleared on this date
+      </div>
+    <% } %>
+  <% } else { %>
+    <% if (!activeList || activeList.length === 0) { %>
+      <div class="text-muted text-center py-4">
+        No pending udhaar in all time view. Everything is cleared.
+      </div>
+    <% } %>
+  <% } %>
+
+  <% if (activeList && activeList.length > 0) { %>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead class="table-light">
+          <tr>
+            <th style="min-width:260px">Customer</th>
+            <th class="text-nowrap">Phone</th>
+            <th class="text-nowrap">Area</th>
+            <th class="text-nowrap">Selected day</th>
+            <th class="text-nowrap">Total due</th>
+            <th class="text-nowrap">WhatsApp</th>
+            <th style="min-width:340px">Receive</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% activeList.forEach(function(c){ 
+              const cid = c && (c.id || c.customer_id || "");
+              const sid = safeId(cid);
+
+              const dayDue = dayOutstandingOf(c);
+              const totalDue = totalOutstandingOf(c);
+
+              const waUrl = c && (c.wa_url || c.waUrl || "");
+              const name = c && (c.name || "");
+              const phone = c && (c.phone || "");
+              const area = c && (c.area || "");
+
+              if (viewMode === "day" && dayDue <= 0) return;
+              if (viewMode === "all" && totalDue <= 0) return;
+
+              const viewAmount = (viewMode === "day") ? fmtMoney(dayDue) : fmtMoney(totalDue);
+          %>
+            <tr>
+              <td>
+                <div class="fw-semibold"><%= name %></div>
+                <div class="small text-muted">ID <%= cid %></div>
+              </td>
+
+              <td class="text-nowrap"><%= phone %></td>
+              <td class="text-nowrap"><%= area %></td>
+
+              <td class="text-nowrap">
+                <span class="badge bg-warning text-dark"><%= fmtMoney(dayDue) %> <%= _currency %></span>
+              </td>
+
+              <td class="text-nowrap">
+                <span class="badge bg-danger"><%= fmtMoney(totalDue) %> <%= _currency %></span>
+              </td>
+
+              <td class="text-nowrap">
+                <% if (waUrl) { %>
+                  <a class="btn btn-sm btn-success btnround" href="<%= waUrl %>" target="_blank" rel="noopener">Send reminder</a>
+                <% } else { %>
+                  <span class="small text-muted">No WhatsApp</span>
+                <% } %>
+              </td>
+
+              <td>
+                <details>
+                  <summary class="small text-primary">Open receive options</summary>
+
+                  <div class="mt-2 p-2 border rounded">
+
+                    <div class="d-flex flex-wrap gap-2 mb-2">
+                      <input class="btn-check" type="radio" name="rcv_<%= sid %>" id="full_<%= sid %>" checked>
+                      <label class="btn btn-sm btn-outline-primary btnround" for="full_<%= sid %>">Received full</label>
+
+                      <input class="btn-check" type="radio" name="rcv_<%= sid %>" id="partial_<%= sid %>">
+                      <label class="btn btn-sm btn-outline-dark btnround" for="partial_<%= sid %>">Received partial</label>
+                    </div>
+
+                    <div>
+                      <div id="box_full_<%= sid %>">
+                        <form method="post" action="/admin/udhaar/receive_full" class="m-0">
+                          <input type="hidden" name="customer_id" value="<%= cid %>">
+                          <input type="hidden" name="date" value="<%= _selectedDate %>">
+                          <input type="hidden" name="mode" value="<%= viewMode %>">
+                          <input type="hidden" name="amount" value="<%= viewAmount %>">
+
+                          <div class="small text-muted mb-2">
+                            Full received amount
+                            <b><%= viewAmount %> <%= _currency %></b>
+                          </div>
+
+                          <div class="d-flex flex-column gap-2">
+                            <label class="small m-0">Cash</label>
+                            <button class="btn btn-sm btn-primary btnround" name="method" value="cash" type="submit">Confirm cash received</button>
+
+                            <label class="small m-0 mt-2">JazzCash</label>
+                            <button class="btn btn-sm btn-outline-primary btnround" name="method" value="jazzcash" type="submit">Confirm JazzCash received</button>
+                          </div>
+                        </form>
+                      </div>
+
+                      <div id="box_partial_<%= sid %>" class="d-none">
+                        <form method="post" action="/admin/udhaar/receive_partial" class="m-0">
+                          <input type="hidden" name="customer_id" value="<%= cid %>">
+                          <input type="hidden" name="date" value="<%= _selectedDate %>">
+                          <input type="hidden" name="mode" value="<%= viewMode %>">
+
+                          <div class="row g-2 align-items-end">
+                            <div class="col-12 col-md-6">
+                              <label class="form-label small m-0">Amount</label>
+                              <input class="form-control form-control-sm" type="number" name="amount" min="1" required>
+                              <div class="small text-muted mt-1">
+                                Current due <b><%= viewAmount %> <%= _currency %></b>
+                              </div>
+                            </div>
+
+                            <div class="col-12 col-md-6">
+                              <label class="form-label small m-0">Method</label>
+                              <select class="form-select form-select-sm" name="method" required>
+                                <option value="cash">Cash</option>
+                                <option value="jazzcash">JazzCash</option>
+                              </select>
+                            </div>
+
+                            <div class="col-12 d-grid">
+                              <button class="btn btn-sm btn-outline-success btnround" type="submit">Save partial received</button>
+                            </div>
+                          </div>
+                        </form>
+                      </div>
+                    </div>
+
+                  </div>
+                </details>
+              </td>
+            </tr>
+
+            <script>
+              (function(){
+                var full = document.getElementById("full_<%= sid %>");
+                var partial = document.getElementById("partial_<%= sid %>");
+                var boxFull = document.getElementById("box_full_<%= sid %>");
+                var boxPartial = document.getElementById("box_partial_<%= sid %>");
+
+                function sync(){
+                  if (!full || !partial || !boxFull || !boxPartial) return;
+                  if (full.checked){
+                    boxFull.classList.remove("d-none");
+                    boxPartial.classList.add("d-none");
+                  } else {
+                    boxFull.classList.add("d-none");
+                    boxPartial.classList.remove("d-none");
+                  }
+                }
+
+                if (full) full.addEventListener("change", sync);
+                if (partial) partial.addEventListener("change", sync);
+                sync();
+              })();
+            </script>
+
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+
+  <% } %>
+
+</div>
+
+<%- include("_footer") %>

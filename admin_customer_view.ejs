@@ -1,0 +1,159 @@
+<%
+  const safeNum = (v) => Number(v || 0) || 0;
+  const lp = safeNum(customer && customer.list_price);
+  const up = safeNum(customer && customer.unit_price);
+  const discountPer = Math.max(0, lp - up);
+%>
+<%- include("_header", { title: "Customer " + customer.id, appName, logoUrl, user }) %>
+
+<div class="row g-3">
+
+  <div class="col-12">
+    <div class="card cardsoft p-4">
+      <div class="d-flex flex-wrap align-items-start justify-content-between gap-3">
+        <div style="min-width:260px">
+          <div class="h5 mb-1">
+            <%= customer.name %>
+            <span class="badge text-bg-light"><%= customer.id %></span>
+          </div>
+
+          <div class="smallmuted">
+            <%= customer.water_name %>
+            <span class="mx-1">|</span>
+            Unit price <%= customer.unit_price %>
+            <span class="mx-1">|</span>
+            List <%= customer.list_price %>
+          </div>
+
+          <div class="smallmuted">Discount per bottle <%= discountPer %></div>
+
+          <div class="smallmuted mt-2">Phone <%= customer.phone || "" %></div>
+          <div class="smallmuted">Address <%= customer.address || "" %></div>
+          <div class="smallmuted">Area <%= customer.area || "" %></div>
+          <div class="smallmuted">Customer PIN <%= customer.pin_hash ? "Set" : "None" %></div>
+
+          <% if (customer.map_url) { %>
+            <a class="btn btn-outline-primary btn-sm btnround mt-2" href="<%= customer.map_url %>" target="_blank" rel="noopener">Open map</a>
+          <% } %>
+        </div>
+
+        <div class="text-end" style="min-width:240px">
+          <div class="kpi">
+            <div class="label">Outstanding udhaar</div>
+            <div class="value"><%= outstanding %> <%= currency %></div>
+          </div>
+
+          <div class="d-flex flex-wrap gap-2 mt-2 justify-content-end">
+            <a class="btn btn-outline-dark btnround" href="/admin/customers">Back</a>
+            <a class="btn btn-outline-primary btnround" href="/admin/customers/<%= customer.id %>/edit">Edit</a>
+
+            <form method="post" action="/admin/customers/<%= customer.id %>/delete" onsubmit="return confirm('Deactivate this customer?')" class="m-0">
+              <button class="btn btn-outline-danger btnround" type="submit">Deactivate</button>
+            </form>
+
+            <a class="btn btn-outline-success btnround" href="/admin/customers/<%= customer.id %>/whatsapp">WhatsApp ledger</a>
+          </div>
+        </div>
+      </div>
+
+      <hr class="my-3">
+
+      <div class="h6 mb-2">Manual adjustment</div>
+      <form method="post" action="/admin/customers/<%= customer.id %>/adjust" class="row g-2">
+        <div class="col-12 col-md-3">
+          <label class="form-label">Amount</label>
+          <input class="form-control" name="amount" type="number" value="0">
+          <div class="form-text">Positive increases udhaar, negative decreases udhaar</div>
+        </div>
+        <div class="col-12 col-md-7">
+          <label class="form-label">Note</label>
+          <input class="form-control" name="note" placeholder="Example previous balance adjustment">
+        </div>
+        <div class="col-12 col-md-2 d-flex align-items-end">
+          <button class="btn btn-primary btnround w-100">Save</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card cardsoft p-4">
+      <div class="h6 mb-2">Orders</div>
+
+      <div class="table-responsive">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>ID</th>
+              <th>Status</th>
+              <th>Qty</th>
+              <th>Delivered</th>
+              <th>Paid</th>
+              <th>Rider</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (!orders || orders.length === 0) { %>
+              <tr><td colspan="6" class="smallmuted">No orders</td></tr>
+            <% } %>
+
+            <% (orders || []).forEach(o => { %>
+              <tr>
+                <td data-label="ID">#<%= o.id %></td>
+                <td data-label="Status"><span class="badge text-bg-light"><%= o.status %></span></td>
+                <td data-label="Qty"><%= o.quantity_requested %></td>
+                <td data-label="Delivered"><%= o.delivered_qty || "" %></td>
+                <td data-label="Paid" class="smallmuted">
+                  <%= o.payment_amount || 0 %>
+                  <%= o.payment_method ? "(" + o.payment_method + ")" : "" %>
+                </td>
+                <td data-label="Rider" class="smallmuted"><%= o.rider_name || "" %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-6">
+    <div class="card cardsoft p-4">
+      <div class="h6 mb-2">Ledger</div>
+
+      <div class="table-responsive">
+        <table class="table table-sm">
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Type</th>
+              <th>Amount</th>
+              <th>Method</th>
+              <th>Note</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if (!ledger || ledger.length === 0) { %>
+              <tr><td colspan="5" class="smallmuted">No ledger entries</td></tr>
+            <% } %>
+
+            <% (ledger || []).forEach(l => { %>
+              <tr>
+                <td data-label="Date" class="smallmuted"><%= new Date(l.created_at).toLocaleString() %></td>
+                <td data-label="Type"><span class="badge text-bg-light"><%= l.entry_type %></span></td>
+                <td data-label="Amount" class="<%= l.amount > 0 ? 'text-danger fw-semibold' : 'text-success fw-semibold' %>"><%= l.amount %></td>
+                <td data-label="Method" class="smallmuted"><%= l.method || "" %></td>
+                <td data-label="Note" class="smallmuted"><%= l.note || "" %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="smallmuted mt-2">Sales are positive. Payments are negative.</div>
+    </div>
+  </div>
+
+</div>
+
+<%- include("_footer") %>

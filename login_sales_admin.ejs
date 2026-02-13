@@ -1,0 +1,33 @@
+<%- include('_header', { title: "Sales Admin Login", appName, logoUrl, user }) %>
+
+<div class="container mt-4" style="max-width:520px">
+  <div class="card">
+    <div class="card-body">
+      <h1 class="h4 mb-3">Sales Admin Login</h1>
+
+      <% if (msg) { %>
+        <div class="alert alert-danger"><%= msg %></div>
+      <% } %>
+
+      <form method="POST" action="/sales_admin/login">
+        <div class="mb-3">
+          <label class="form-label">Username</label>
+          <input name="username" class="form-control" autocomplete="username" required>
+        </div>
+
+        <div class="mb-3">
+          <label class="form-label">Password</label>
+          <input name="password" type="password" class="form-control" autocomplete="current-password" required>
+        </div>
+
+        <button class="btn btn-primary w-100" type="submit">Login</button>
+
+        <div class="small text-muted mt-3">
+          Ye login sirf Sales report ke liye hai
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<%- include('_footer') %>

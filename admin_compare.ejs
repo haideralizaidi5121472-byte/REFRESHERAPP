@@ -1,0 +1,595 @@
+<%- include('_header', { title: "Sales Report", appName, logoUrl, user }) %>
+
+<%
+  const n = (v) => {
+    const x = Number(v || 0);
+    return isNaN(x) ? 0 : x;
+  };
+
+  const sel = (selectedDate || "").toString().trim();
+  const cmp = (compareDate || "").toString().trim();
+
+  const r = report || {};
+  const isAdminUi = (mainUser && (mainUser.role === "admin" || mainUser.role === "owner"));
+  const isSalesUi = (!isAdminUi && salesUser);
+  const cr = compareReport || null;
+
+  const daySales = n(r.sales);
+  const dayCash = n(r.cash);
+  const dayJazz = n(r.jazz);
+  const dayExp = n(r.expenses);
+  const dayUdhaar = n(r.udhaar);
+  const dayPendingJazz = n(r.pendingJazz);
+  const dayProfitAcc = n(r.profitAccrual);
+  const dayProfitCash = n(r.profitCash);
+
+  const receivedToday = dayCash + dayJazz;
+  const netAfterExpBase = receivedToday - dayExp;
+
+  const netAfterExpAdjusted = n(r.netAfterExpenses);
+  const netAfterExp = isSalesUi ? netAfterExpAdjusted : netAfterExpBase;
+
+  const m = monthly || {};
+  const mLabel = (m.monthLabel || "").toString();
+  const mSales = n(m.sales);
+  const mCash = n(m.cash);
+  const mJazz = n(m.jazz);
+  const mExp = n(m.expenses);
+  const mUdhaar = n(m.udhaar);
+  const mProfitCash = n(m.profitCash);
+
+  const mReceived = mCash + mJazz;
+  const mNetAfterExpBase = mReceived - mExp;
+  const mNetAfterExpAdjusted = n(m.netAfterExpenses);
+  const mNetAfterExp = isSalesUi ? mNetAfterExpAdjusted : mNetAfterExpBase;
+
+  const orders = Array.isArray(r.orders) ? r.orders : [];
+  const mRows = Array.isArray(monthlyRows) ? monthlyRows : [];
+
+  let tBill = 0, tRec = 0, tDue = 0, tDel = 0, tRet = 0, tJazzPendingCount = 0;
+  orders.forEach(o => {
+    tBill += n(o.bill_total);
+    tRec += n(o.received_total);
+    tDue += n(o.due_total);
+    tDel += n(o.delivered_qty);
+    tRet += n(o.empty_returned_qty);
+    const pm = (o.payment_method || "").toString().toLowerCase();
+    const isJazz = pm === "jazzcash";
+    const receivedFlag = n(o.payment_received) === 1;
+    if (isJazz && !receivedFlag) tJazzPendingCount += 1;
+  });
+
+  const diff = (a, b) => n(a) - n(b);
+
+  const baseUi = isAdminUi ? "/admin" : (isSalesUi ? "/sales_admin" : "/admin");
+  const reportAction = isAdminUi ? "/admin/compare" : "/sales_admin/report";
+  const dashUrl = isAdminUi ? "/admin" : "/sales_admin/report";
+
+  const expensesUrl = baseUi + "/expenses";
+  const udhaarUrl = baseUi + "/udhaar";
+  const pendingJazzUrl = baseUi + "/pending_jazzcash";
+
+  const gs = (typeof globalStats !== "undefined" && globalStats) ? globalStats : {};
+  const totalClients = n(gs.totalClients);
+
+  const safeArr = (v) => Array.isArray(v) ? v : [];
+  const salesRidersArr = safeArr(salesRiders);
+  const salesEmployeesArr = safeArr(salesEmployees);
+%>
+
+<div class="container mt-3">
+
+  <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+    <div>
+      <h1 class="h4 m-0">Sales Report</h1>
+      <div class="text-muted small">Daily and monthly accounts</div>
+      <div class="text-muted small">Note: 4 AM to 4 AM cycle server me set hoga</div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2">
+      <a href="<%= dashUrl %>" class="btn btn-outline-primary btn-sm">Dashboard</a>
+      <a href="<%= expensesUrl %>" class="btn btn-outline-dark btn-sm">Expenses</a>
+      <a href="<%= udhaarUrl %>" class="btn btn-outline-dark btn-sm">Udhaar list</a>
+      <a href="<%= pendingJazzUrl %>" class="btn btn-outline-warning btn-sm">Pending JazzCash</a>
+    </div>
+  </div>
+
+  <form class="row g-2 align-items-end mb-3" method="GET" action="<%= reportAction %>">
+    <div class="col-12 col-md-4">
+      <label class="form-label mb-1">Select date</label>
+      <input type="date" name="date" value="<%= sel %>" class="form-control" required>
+    </div>
+
+    <div class="col-12 col-md-4">
+      <label class="form-label mb-1">Compare with date</label>
+      <input type="date" name="compare" value="<%= cmp %>" class="form-control">
+    </div>
+
+    <div class="col-12 col-md-4 d-flex gap-2">
+      <button class="btn btn-primary w-100" type="submit">View report</button>
+      <a class="btn btn-outline-dark w-100" href="<%= reportAction %>">Today</a>
+    </div>
+  </form>
+
+  <% if (isSalesUi || isAdminUi) { %>
+    <div class="row g-3 mb-3">
+      <div class="col-12 col-sm-6 col-lg-4">
+        <div class="card h-100 border-0 shadow-sm">
+          <div class="card-body">
+            <div class="text-muted small">Clients</div>
+            <div class="h3 m-0"><%= totalClients %></div>
+            <div class="text-muted small">Total registered</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-sm-6 col-lg-4">
+        <div class="card h-100 border-0 shadow-sm">
+          <div class="card-body">
+            <div class="text-muted small">Orders</div>
+            <div class="h3 m-0"><%= orders.length %></div>
+            <div class="text-muted small">Selected date orders</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-12 col-sm-6 col-lg-4">
+        <div class="card h-100 border-0 shadow-sm">
+          <div class="card-body">
+            <div class="text-muted small">Bottles delivered</div>
+            <div class="h3 m-0"><%= tDel %></div>
+            <div class="text-muted small">Selected date delivered</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  <% } %>
+
+  <div class="row g-3 mb-4">
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card h-100 border-0 shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Total sales</div>
+          <div class="h3 m-0"><%= daySales %> <span class="fs-6"><%= currency %></span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card h-100 border-0 shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Total expenses</div>
+          <div class="h3 m-0"><%= dayExp %> <span class="fs-6"><%= currency %></span></div>
+          <div class="text-muted small">Expenses page se add hoti hain</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card h-100 border-0 shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Cash received</div>
+          <div class="h3 m-0"><%= dayCash %> <span class="fs-6"><%= currency %></span></div>
+          <div class="text-muted small">Cash basis received</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card h-100 border-0 shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">JazzCash received</div>
+          <div class="h3 m-0"><%= dayJazz %> <span class="fs-6"><%= currency %></span></div>
+          <div class="text-muted small">Only verified JazzCash</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card h-100 border-0 shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Udhaar</div>
+          <div class="h3 m-0"><%= dayUdhaar %> <span class="fs-6"><%= currency %></span></div>
+          <div class="text-muted small">Bill minus received</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card h-100 border-0 shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Pending JazzCash</div>
+          <div class="h3 m-0"><%= dayPendingJazz %> <span class="fs-6"><%= currency %></span></div>
+          <div class="text-muted small">Orders pending <%= tJazzPendingCount %></div>
+          <div class="mt-2">
+            <a href="<%= pendingJazzUrl %>" class="btn btn-sm btn-outline-warning">Open pending list</a>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card h-100 border-0 shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Profit accrual</div>
+          <div class="h3 m-0"><%= dayProfitAcc %> <span class="fs-6"><%= currency %></span></div>
+          <div class="text-muted small">Sales minus expenses</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-sm-6 col-lg-3">
+      <div class="card h-100 border-0 shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Net after expenses</div>
+          <div class="h3 m-0"><%= netAfterExp %> <span class="fs-6"><%= currency %></span></div>
+          <div class="text-muted small">(Cash plus verified Jazz) minus expenses</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <% if (cr) { 
+      const cs = n(cr.sales);
+      const cc = n(cr.cash);
+      const cj = n(cr.jazz);
+      const ce = n(cr.expenses);
+      const cu = n(cr.udhaar);
+      const cpAcc = n(cr.profitAccrual);
+      const cpCash = n(cr.profitCash);
+      const cPend = n(cr.pendingJazz);
+  %>
+    <div class="card mb-4 shadow-sm">
+      <div class="card-header bg-light">
+        <strong>Comparison</strong>
+        <span class="text-muted small ms-2"><%= sel %> vs <%= cmp %></span>
+      </div>
+
+      <div class="table-responsive">
+        <table class="table table-sm mb-0 align-middle">
+          <thead class="table-light">
+            <tr>
+              <th>Metric</th>
+              <th><%= sel %></th>
+              <th><%= cmp %></th>
+              <th>Diff</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr><td>Sales</td><td><%= daySales %></td><td><%= cs %></td><td class="<%= diff(daySales, cs) < 0 ? 'text-danger' : 'text-success' %>"><%= diff(daySales, cs) %></td></tr>
+            <tr><td>Expenses</td><td><%= dayExp %></td><td><%= ce %></td><td class="<%= diff(dayExp, ce) > 0 ? 'text-danger' : 'text-success' %>"><%= diff(dayExp, ce) %></td></tr>
+            <tr><td>Cash received</td><td><%= dayCash %></td><td><%= cc %></td><td class="<%= diff(dayCash, cc) < 0 ? 'text-danger' : 'text-success' %>"><%= diff(dayCash, cc) %></td></tr>
+            <tr><td>Jazz received</td><td><%= dayJazz %></td><td><%= cj %></td><td class="<%= diff(dayJazz, cj) < 0 ? 'text-danger' : 'text-success' %>"><%= diff(dayJazz, cj) %></td></tr>
+            <tr><td>Udhaar</td><td><%= dayUdhaar %></td><td><%= cu %></td><td class="<%= diff(dayUdhaar, cu) > 0 ? 'text-danger' : 'text-success' %>"><%= diff(dayUdhaar, cu) %></td></tr>
+            <tr><td>Pending JazzCash</td><td><%= dayPendingJazz %></td><td><%= cPend %></td><td class="<%= diff(dayPendingJazz, cPend) > 0 ? 'text-danger' : 'text-success' %>"><%= diff(dayPendingJazz, cPend) %></td></tr>
+            <tr><td>Profit accrual</td><td><%= dayProfitAcc %></td><td><%= cpAcc %></td><td class="<%= diff(dayProfitAcc, cpAcc) < 0 ? 'text-danger' : 'text-success' %>"><%= diff(dayProfitAcc, cpAcc) %></td></tr>
+            <tr><td>Profit cash</td><td><%= dayProfitCash %></td><td><%= cpCash %></td><td class="<%= diff(dayProfitCash, cpCash) < 0 ? 'text-danger' : 'text-success' %>"><%= diff(dayProfitCash, cpCash) %></td></tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  <% } %>
+
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header bg-light d-flex flex-wrap justify-content-between align-items-center gap-2">
+      <strong>Daily orders</strong>
+      <span class="text-muted small">Total <%= orders.length %></span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>ID</th>
+            <th>Customer</th>
+            <th>Delivered</th>
+            <th>Returned</th>
+            <th>Bill</th>
+            <th>Method</th>
+            <th>Received</th>
+            <th>Due</th>
+            <th>Jazz status</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (orders.length === 0) { %>
+            <tr><td colspan="9" class="text-center text-muted py-4">No delivered orders on this date</td></tr>
+          <% } %>
+
+          <% orders.forEach(o => { 
+               const bill = n(o.bill_total);
+               const rec = n(o.received_total);
+               const due = n(o.due_total);
+               const pm = (o.payment_method || "").toString();
+               const isJazz = pm.toLowerCase() === "jazzcash";
+               const receivedFlag = n(o.payment_received) === 1;
+          %>
+            <tr>
+              <td><%= o.id %></td>
+              <td class="text-nowrap"><%= o.customer_name %></td>
+              <td><%= n(o.delivered_qty) %></td>
+              <td><%= n(o.empty_returned_qty) %></td>
+              <td class="fw-semibold"><%= bill %></td>
+              <td><%= pm || "" %></td>
+              <td class="fw-semibold"><%= rec %></td>
+              <td class="<%= due > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= due %></td>
+              <td>
+                <% if (isJazz) { %>
+                  <% if (receivedFlag) { %>
+                    <span class="badge bg-success">received</span>
+                  <% } else { %>
+                    <span class="badge bg-warning text-dark">pending</span>
+                  <% } %>
+                <% } else { %>
+                  <span class="text-muted">cash</span>
+                <% } %>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+
+        <% if (orders.length > 0) { %>
+          <tfoot class="table-light">
+            <tr>
+              <th colspan="2">Totals</th>
+              <th><%= tDel %></th>
+              <th><%= tRet %></th>
+              <th><%= tBill %></th>
+              <th></th>
+              <th><%= tRec %></th>
+              <th><%= tDue %></th>
+              <th></th>
+            </tr>
+          </tfoot>
+        <% } %>
+      </table>
+    </div>
+  </div>
+
+  <div class="card mb-3 shadow-sm">
+    <div class="card-header bg-light">
+      <strong>Monthly summary</strong>
+      <span class="text-muted small ms-2"><%= mLabel %></span>
+    </div>
+
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-6 col-lg-2">
+          <div class="text-muted small">Sales</div>
+          <div class="fw-bold"><%= mSales %></div>
+        </div>
+        <div class="col-6 col-lg-2">
+          <div class="text-muted small">Expenses</div>
+          <div class="fw-bold"><%= mExp %></div>
+        </div>
+        <div class="col-6 col-lg-2">
+          <div class="text-muted small">Cash</div>
+          <div class="fw-bold"><%= mCash %></div>
+        </div>
+        <div class="col-6 col-lg-2">
+          <div class="text-muted small">Jazz</div>
+          <div class="fw-bold"><%= mJazz %></div>
+        </div>
+        <div class="col-6 col-lg-2">
+          <div class="text-muted small">Udhaar</div>
+          <div class="fw-bold"><%= mUdhaar %></div>
+        </div>
+        <div class="col-6 col-lg-2">
+          <div class="text-muted small">Net after expenses</div>
+          <div class="fw-bold"><%= mNetAfterExp %></div>
+        </div>
+      </div>
+
+      <div class="mt-2 text-muted small">
+        Net after expenses means (cash plus verified jazz) minus expenses
+      </div>
+    </div>
+  </div>
+
+  <% if (isSalesUi) { %>
+    <div class="card mb-4 shadow-sm">
+      <div class="card-header bg-light">
+        <strong>Riders and employees</strong>
+        <span class="text-muted small ms-2">Sales admin finance</span>
+      </div>
+
+      <div class="card-body">
+
+        <div class="mb-4">
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h5 class="m-0">Riders</h5>
+            <form method="POST" action="/sales_admin/riders/create" class="d-flex gap-2 flex-wrap">
+              <input name="name" placeholder="Rider name" required class="form-control form-control-sm" style="max-width:220px;">
+              <button type="submit" class="btn btn-sm btn-dark">Add rider</button>
+            </form>
+          </div>
+
+          <div class="table-responsive mt-2">
+            <table class="table table-sm align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th class="text-end">Advance total</th>
+                  <th class="text-end">Return total</th>
+                  <th class="text-end">Balance</th>
+                  <th class="text-end">Deliveries</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% if (!salesRidersArr.length) { %>
+                  <tr><td colspan="5" class="text-muted py-3">No riders added yet</td></tr>
+                <% } %>
+
+                <% salesRidersArr.forEach(function(rr){ %>
+                  <tr>
+                    <td class="text-nowrap"><%= rr.name %></td>
+                    <td class="text-end"><%= rr.advanceTotal %></td>
+                    <td class="text-end"><%= rr.returnTotal %></td>
+                    <td class="text-end fw-semibold"><%= rr.balance %></td>
+                    <td class="text-end">
+                      <a class="btn btn-sm btn-outline-primary" href="/sales_admin/riders/<%= rr.id %>/daily">Open</a>
+                      <form method="POST" action="/sales_admin/riders/<%= rr.id %>/delete" style="display:inline">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete rider?')">Delete</button>
+                      </form>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td colspan="5">
+                      <div class="d-flex gap-2 flex-wrap align-items-end">
+
+                        <form method="POST" action="/sales_admin/riders/advance" class="d-flex gap-2 flex-wrap">
+                          <input type="hidden" name="rider_id" value="<%= rr.id %>">
+                          <input name="amount" type="number" min="1" placeholder="Advance amount" required class="form-control form-control-sm" style="width:160px;">
+                          <input name="date" value="<%= sel %>" class="form-control form-control-sm" style="width:150px;">
+                          <select name="method" class="form-select form-select-sm" style="width:140px;">
+                            <option value="cash">cash</option>
+                            <option value="jazzcash">jazzcash</option>
+                          </select>
+                          <input name="note" placeholder="Note" class="form-control form-control-sm" style="width:220px;">
+                          <button type="submit" class="btn btn-sm btn-primary">Add advance</button>
+                        </form>
+
+                        <form method="POST" action="/sales_admin/riders/return" class="d-flex gap-2 flex-wrap">
+                          <input type="hidden" name="rider_id" value="<%= rr.id %>">
+                          <input name="amount" type="number" min="1" placeholder="Return amount" required class="form-control form-control-sm" style="width:160px;">
+                          <input name="date" value="<%= sel %>" class="form-control form-control-sm" style="width:150px;">
+                          <select name="method" class="form-select form-select-sm" style="width:140px;">
+                            <option value="cash">cash</option>
+                            <option value="jazzcash">jazzcash</option>
+                          </select>
+                          <input name="note" placeholder="Note" class="form-control form-control-sm" style="width:220px;">
+                          <button type="submit" class="btn btn-sm btn-success">Add return</button>
+                        </form>
+
+                      </div>
+                      <div class="text-muted small mt-2">
+                        Deliveries button admin page open karega. Agar access issue aaye to admin route middleware me sales admin allow karna hoga
+                      </div>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div>
+          <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+            <h5 class="m-0">Employees</h5>
+            <form method="POST" action="/sales_admin/employees/create" class="d-flex gap-2 flex-wrap">
+              <input name="name" placeholder="Employee name" required class="form-control form-control-sm" style="max-width:220px;">
+              <input name="monthly_salary" type="number" min="0" placeholder="Monthly salary" class="form-control form-control-sm" style="width:170px;">
+              <input name="salary_day" type="number" min="1" max="31" placeholder="Salary day" class="form-control form-control-sm" style="width:140px;">
+              <button type="submit" class="btn btn-sm btn-dark">Add employee</button>
+            </form>
+          </div>
+
+          <div class="table-responsive mt-2">
+            <table class="table table-sm align-middle">
+              <thead class="table-light">
+                <tr>
+                  <th>Name</th>
+                  <th class="text-end">Salary</th>
+                  <th class="text-end">Advances this month</th>
+                  <th class="text-end">Remaining</th>
+                  <th>Pay date</th>
+                  <th class="text-end">Action</th>
+                </tr>
+              </thead>
+
+              <tbody>
+                <% if (!salesEmployeesArr.length) { %>
+                  <tr><td colspan="6" class="text-muted py-3">No employees added yet</td></tr>
+                <% } %>
+
+                <% salesEmployeesArr.forEach(function(ee){ %>
+                  <tr>
+                    <td class="text-nowrap"><%= ee.name %></td>
+                    <td class="text-end"><%= ee.salary %></td>
+                    <td class="text-end"><%= ee.advancesThisMonth %></td>
+                    <td class="text-end fw-semibold"><%= ee.remainingSalary %></td>
+                    <td class="text-nowrap"><%= ee.payDate %></td>
+
+                    <td class="text-end">
+                      <form method="POST" action="/sales_admin/employees/<%= ee.id %>/delete" style="display:inline">
+                        <button type="submit" class="btn btn-sm btn-outline-danger" onclick="return confirm('Delete employee?')">Delete</button>
+                      </form>
+                    </td>
+                  </tr>
+
+                  <tr>
+                    <td colspan="6">
+                      <form method="POST" action="/sales_admin/employees/advance" class="d-flex gap-2 flex-wrap align-items-end">
+                        <input type="hidden" name="employee_id" value="<%= ee.id %>">
+                        <input name="amount" type="number" min="1" placeholder="Advance amount" required class="form-control form-control-sm" style="width:170px;">
+                        <input name="date" value="<%= sel %>" class="form-control form-control-sm" style="width:150px;">
+                        <select name="method" class="form-select form-select-sm" style="width:140px;">
+                          <option value="cash">cash</option>
+                          <option value="jazzcash">jazzcash</option>
+                        </select>
+                        <input name="note" placeholder="Note" class="form-control form-control-sm" style="width:240px;">
+                        <button type="submit" class="btn btn-sm btn-warning">Add advance</button>
+                      </form>
+                    </td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  <% } %>
+
+  <div class="card mb-4 shadow-sm">
+    <div class="card-header bg-light d-flex justify-content-between align-items-center">
+      <strong>Month daily breakdown</strong>
+      <span class="text-muted small"><%= mRows.length %> days</span>
+    </div>
+
+    <div class="table-responsive">
+      <table class="table table-sm mb-0 align-middle">
+        <thead class="table-light">
+          <tr>
+            <th>Day</th>
+            <th>Sales</th>
+            <th>Expenses</th>
+            <th>Cash</th>
+            <th>Jazz</th>
+            <th>Udhaar</th>
+            <th>Net after expenses</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (mRows.length === 0) { %>
+            <tr><td colspan="7" class="text-center text-muted py-4">No data for this month</td></tr>
+          <% } %>
+
+          <% mRows.forEach(rw => { 
+               const s = n(rw.sales);
+               const e = n(rw.expenses);
+               const c = n(rw.cash);
+               const j = n(rw.jazz);
+               const u = n(rw.udhaar);
+               const net = n(rw.netAfterExpenses);
+          %>
+            <tr>
+              <td class="text-nowrap"><%= rw.day %></td>
+              <td><%= s %></td>
+              <td><%= e %></td>
+              <td><%= c %></td>
+              <td><%= j %></td>
+              <td><%= u %></td>
+              <td class="<%= net < 0 ? 'text-danger fw-semibold' : 'fw-semibold' %>"><%= net %></td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+</div>
+
+<%- include('_footer') %>

@@ -1,0 +1,127 @@
+<%- include("_header", { title: "Pending JazzCash", appName, logoUrl, user }) %>
+
+<%
+  const safeNum = (v) => Number(v || 0) || 0;
+  const _currency = (typeof currency !== "undefined" && currency) ? currency : "PKR";
+  const rows = Array.isArray(pendingJazz) ? pendingJazz : [];
+
+  const totalPending = rows.reduce((s, r) => s + safeNum(r && r.payment_amount), 0);
+%>
+
+<div class="card cardsoft p-3 p-md-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div>
+      <div class="h5 mb-1">Pending JazzCash</div>
+      <div class="smallmuted">Delivered orders jinki JazzCash verification pending hai</div>
+    </div>
+
+    <div class="d-flex flex-wrap gap-2 align-items-center">
+      <a class="btn btn-sm btn-outline-dark btnround" href="/admin">Back to dashboard</a>
+      <a class="btn btn-sm btn-outline-primary btnround" href="/admin/pending_jazzcash">Refresh</a>
+    </div>
+  </div>
+
+  <hr class="my-3">
+
+  <div class="row g-2">
+    <div class="col-12 col-md-6">
+      <div class="p-3 border rounded h-100">
+        <div class="smallmuted">Total pending amount</div>
+        <div class="h4 m-0"><%= totalPending %> <%= _currency %></div>
+        <div class="small text-muted mt-1">Count <b><%= rows.length %></b></div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6">
+      <div class="p-3 border rounded h-100">
+        <div class="smallmuted">Tip</div>
+        <div class="small text-muted m-0">
+          WhatsApp reminder se customer ko message chala jata hai, phir payment aane par Verify kar dein.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <hr class="my-3">
+
+  <% if (!rows.length) { %>
+    <div class="text-muted text-center py-4">
+      No pending JazzCash. Everything is verified.
+    </div>
+  <% } else { %>
+
+    <div class="table-responsive">
+      <table class="table table-sm align-middle">
+        <thead class="table-light">
+          <tr>
+            <th class="text-nowrap">Order</th>
+            <th style="min-width:220px">Customer</th>
+            <th class="text-nowrap">Phone</th>
+            <th class="text-nowrap">Delivered</th>
+            <th class="text-nowrap">Pending amount</th>
+            <th class="text-nowrap">WhatsApp</th>
+            <th style="min-width:320px">Verify</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% rows.forEach(function(r){ 
+              const oid = r && r.id ? r.id : "";
+              const name = r && (r.cust_name || r.customer_name) ? (r.cust_name || r.customer_name) : "";
+              const phone = r && (r.cust_phone || r.customer_phone) ? (r.cust_phone || r.customer_phone) : "";
+              const deliveredAt = r && r.delivered_at ? String(r.delivered_at) : "";
+              const amt = safeNum(r && r.payment_amount);
+
+              const waHref = (r && r.wa_route) ? r.wa_route : (r && r.wa_url ? r.wa_url : "");
+          %>
+            <tr>
+              <td class="text-nowrap">
+                <div class="fw-semibold">#<%= oid %></div>
+              </td>
+
+              <td>
+                <div class="fw-semibold"><%= name %></div>
+              </td>
+
+              <td class="text-nowrap"><%= phone %></td>
+
+              <td class="text-nowrap">
+                <span class="small text-muted"><%= deliveredAt ? deliveredAt : "-" %></span>
+              </td>
+
+              <td class="text-nowrap">
+                <span class="badge bg-warning text-dark"><%= amt %> <%= _currency %></span>
+              </td>
+
+              <td class="text-nowrap">
+                <% if (waHref) { %>
+                  <a class="btn btn-sm btn-success btnround" href="<%= waHref %>" target="_blank" rel="noopener">Send reminder</a>
+                <% } else { %>
+                  <span class="small text-muted">No WhatsApp</span>
+                <% } %>
+              </td>
+
+              <td>
+                <form method="post" action="/admin/orders/<%= oid %>/verify_jazzcash" class="m-0">
+                  <div class="row g-2 align-items-end">
+                    <div class="col-12 col-md-6">
+                      <label class="form-label small m-0">Amount received</label>
+                      <input class="form-control form-control-sm" type="number" name="amount" min="1" value="<%= amt %>" required>
+                      <div class="small text-muted mt-1">Agar amount change ho to yahan edit kar sakte hain</div>
+                    </div>
+                    <div class="col-12 col-md-6 d-grid">
+                      <button class="btn btn-sm btn-outline-primary btnround" type="submit">Verify JazzCash</button>
+                      <a class="btn btn-sm btn-outline-dark btnround mt-2" href="/admin/orders/<%= oid %>/jazzcash_whatsapp">Open invoice msg</a>
+                    </div>
+                  </div>
+                </form>
+              </td>
+            </tr>
+          <% }) %>
+        </tbody>
+      </table>
+    </div>
+
+  <% } %>
+</div>
+
+<%- include("_footer") %>

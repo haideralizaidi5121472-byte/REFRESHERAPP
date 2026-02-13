@@ -1,0 +1,461 @@
+<%- include("_header", { title: "Customer", appName, logoUrl, user }) %>
+
+<%
+  const safeNum = (v) => Number(v || 0) || 0;
+
+  const unitPrice = safeNum(customer && customer.unit_price);
+  const listPrice = safeNum(customer && customer.list_price);
+
+  const discountBottle = (discountPer !== undefined && discountPer !== null)
+    ? safeNum(discountPer)
+    : Math.max(0, listPrice - unitPrice);
+
+  const outstandingAmt = safeNum(outstanding);
+
+  const statusBadge = (st) => {
+    const s = String(st || "").toLowerCase();
+    if (s === "pending") return "secondary";
+    if (s === "assigned") return "primary";
+    if (s === "accepted") return "info";
+    if (s === "onway") return "warning";
+    if (s === "delivered") return "success";
+    if (s === "cancelled") return "dark";
+    return "light";
+  };
+
+  const billQty = (o) => {
+    const dq = safeNum(o && o.delivered_qty);
+    if (dq > 0) return dq;
+    return safeNum(o && o.quantity_requested);
+  };
+
+  const totalBill = (o) => safeNum(o && o.unit_price) * billQty(o);
+  const paidAmt = (o) => safeNum(o && o.payment_amount);
+  const dueAmt = (o) => Math.max(0, totalBill(o) - paidAmt(o));
+
+  const fmtDate = (iso) => {
+    try { return iso ? new Date(iso).toLocaleString() : ""; } catch (e) { return ""; }
+  };
+
+  const deliveredTotal = safeNum(stats && stats.delivered_total);
+  const returnedTotal = safeNum(stats && stats.returned_total);
+  const spentTotal = safeNum(stats && stats.spent_total);
+
+  const defaultQty = 1;
+  const defaultTotal = unitPrice * defaultQty;
+  const defaultListTotal = listPrice * defaultQty;
+  const defaultSave = discountBottle * defaultQty;
+
+  const recent = (recentOrders || []);
+  const latestActive = recent.find(o => {
+    const s = String(o && o.status || "").toLowerCase();
+    return s !== "delivered" && s !== "cancelled";
+  }) || (recent.length ? recent[0] : null);
+
+  const payLabel = (o) => {
+    const m = String(o && o.payment_method || "").toLowerCase();
+    if (!m || m === "none") return "";
+    return m;
+  };
+
+  const isJazzPending = (o) => {
+    const m = String(o && o.payment_method || "").toLowerCase();
+    const rec = String(o && o.payment_received || "1");
+    return m === "jazzcash" && rec !== "1";
+  };
+%>
+
+<div class="row g-3">
+
+  <div class="col-12 col-lg-5">
+    <div class="card cardsoft p-3 p-md-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+        <div>
+          <div class="h5 mb-1">Welcome <%= customer.name %></div>
+          <div class="smallmuted">
+            Customer ID <span class="fw-semibold"><%= customer.id %></span>
+          </div>
+        </div>
+        <div class="text-end">
+          <div class="badge bg-light text-dark">Your water</div>
+          <div class="fw-semibold mt-1"><%= customer.water_name %></div>
+        </div>
+      </div>
+
+      <hr class="my-3">
+
+      <div class="row g-2">
+        <div class="col-12 col-md-6">
+          <div class="kpi">
+            <div class="label">Your price per bottle</div>
+            <div class="value"><%= unitPrice %> <%= currency %></div>
+            <div class="smallmuted">List price <%= listPrice %> <%= currency %></div>
+          </div>
+        </div>
+        <div class="col-12 col-md-6">
+          <div class="kpi">
+            <div class="label">Discount per bottle</div>
+            <div class="value"><%= discountBottle %> <%= currency %></div>
+            <div class="smallmuted">You save on every bottle</div>
+          </div>
+        </div>
+        <div class="col-12">
+          <div class="kpi">
+            <div class="label">Outstanding balance</div>
+            <div class="value <%= outstandingAmt > 0 ? 'text-danger' : '' %>"><%= outstandingAmt %> <%= currency %></div>
+            <div class="smallmuted">This updates after delivery and payments</div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="my-3">
+
+      <form method="post" action="/customer/order" class="row g-2 align-items-end" id="orderForm">
+        <div class="col-12 col-md-6">
+          <label class="form-label">Quantity</label>
+          <input id="qtyInput" name="quantity" type="number" min="1" max="100" step="1" inputmode="numeric" value="1" class="form-control">
+          <div class="form-text">Max 100 bottles per order</div>
+        </div>
+        <div class="col-12 col-md-6 d-grid">
+          <button id="orderBtn" class="btn btn-primary btnround" type="submit">Place order</button>
+        </div>
+
+        <div class="col-12">
+          <div class="p-3 rounded border bg-light">
+            <div class="d-flex flex-wrap justify-content-between gap-2">
+              <div class="small text-muted">Estimate bill for this order</div>
+              <div class="fw-semibold" id="estTotal"><%= defaultTotal %> <%= currency %></div>
+            </div>
+            <div class="d-flex flex-wrap justify-content-between gap-2 mt-1">
+              <div class="small text-muted">List total</div>
+              <div class="small text-muted" id="estListTotal"><%= defaultListTotal %> <%= currency %></div>
+            </div>
+            <div class="d-flex flex-wrap justify-content-between gap-2 mt-1">
+              <div class="small text-muted">You save</div>
+              <div class="small fw-semibold text-success" id="estSave"><%= defaultSave %> <%= currency %></div>
+            </div>
+            <div class="smallmuted mt-2">Status will show as pending then admin or rider will update it</div>
+          </div>
+        </div>
+      </form>
+
+    </div>
+  </div>
+
+  <div class="col-12 col-lg-7">
+
+    <% if (latestActive) { 
+        const st = String(latestActive.status || "");
+        const badge = statusBadge(st);
+        const qty = billQty(latestActive);
+        const total = totalBill(latestActive);
+        const paid = paidAmt(latestActive);
+        const due = dueAmt(latestActive);
+        const method = payLabel(latestActive);
+        const riderName = latestActive.rider_name || "";
+        const showJazzPending = isJazzPending(latestActive);
+    %>
+      <div class="card cardsoft p-3 p-md-4 mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2">
+          <div>
+            <div class="h6 mb-1">Latest order</div>
+            <div class="smallmuted">Order #<%= latestActive.id %>  Created <%= fmtDate(latestActive.created_at) %></div>
+            <% if (riderName) { %>
+              <div class="smallmuted mt-1">Rider <span class="fw-semibold"><%= riderName %></span></div>
+            <% } %>
+          </div>
+          <div class="text-end">
+            <span class="badge bg-<%= badge %>"><%= st %></span>
+            <% if (showJazzPending) { %>
+              <span class="badge bg-warning text-dark ms-1">JazzCash pending</span>
+            <% } %>
+          </div>
+        </div>
+
+        <div class="row g-2 mt-2">
+          <div class="col-12 col-sm-4">
+            <div class="kpi">
+              <div class="label">Qty</div>
+              <div class="value"><%= qty %></div>
+            </div>
+          </div>
+          <div class="col-12 col-sm-4">
+            <div class="kpi">
+              <div class="label">Total</div>
+              <div class="value"><%= total %> <%= currency %></div>
+              <% if (method) { %>
+                <div class="smallmuted">Method <%= method %></div>
+              <% } %>
+            </div>
+          </div>
+          <div class="col-12 col-sm-4">
+            <div class="kpi">
+              <div class="label">Due</div>
+              <div class="value <%= due > 0 ? 'text-danger' : '' %>"><%= due %> <%= currency %></div>
+              <div class="smallmuted">Paid <%= paid %></div>
+            </div>
+          </div>
+        </div>
+
+        <% if (String(latestActive.status || "").toLowerCase() === "delivered") { %>
+          <div class="smallmuted mt-2">Delivered <%= fmtDate(latestActive.delivered_at) %></div>
+        <% } %>
+      </div>
+    <% } %>
+
+    <div class="card cardsoft p-3 p-md-4">
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2">
+        <div>
+          <div class="h6 mb-1">Tracking</div>
+          <div class="smallmuted">Your delivery and spend summary</div>
+        </div>
+      </div>
+
+      <div class="row g-2 mt-2">
+        <div class="col-12 col-sm-4">
+          <div class="kpi">
+            <div class="label">Delivered bottles</div>
+            <div class="value"><%= deliveredTotal %></div>
+          </div>
+        </div>
+        <div class="col-12 col-sm-4">
+          <div class="kpi">
+            <div class="label">Empty returned</div>
+            <div class="value"><%= returnedTotal %></div>
+          </div>
+        </div>
+        <div class="col-12 col-sm-4">
+          <div class="kpi">
+            <div class="label">Total spend</div>
+            <div class="value"><%= spentTotal %> <%= currency %></div>
+          </div>
+        </div>
+      </div>
+
+      <hr class="my-3">
+
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-2">
+        <div class="h6 mb-0">Recent orders</div>
+        <div class="smallmuted">Latest activity</div>
+      </div>
+
+      <% if (!recentOrders || recentOrders.length === 0) { %>
+        <div class="text-muted py-3">No orders yet</div>
+      <% } else { %>
+
+        <div class="d-block d-md-none">
+          <div class="list-group">
+            <% recentOrders.forEach(o => { 
+                const qty = billQty(o);
+                const total = totalBill(o);
+                const paid = paidAmt(o);
+                const due = dueAmt(o);
+                const st = String(o.status || "");
+                const badge = statusBadge(st);
+                const method = payLabel(o);
+                const showJazzPending = isJazzPending(o);
+            %>
+              <div class="list-group-item">
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                  <div>
+                    <div class="fw-semibold">Order #<%= o.id %></div>
+                    <div class="small text-muted">Qty <%= qty %>  Total <%= total %> <%= currency %></div>
+                    <div class="small text-muted">Paid <%= paid %>  Due <span class="<%= due > 0 ? 'text-danger fw-semibold' : '' %>"><%= due %></span></div>
+                    <% if (method) { %>
+                      <div class="small text-muted">Method <%= method %></div>
+                    <% } %>
+                    <% if (showJazzPending) { %>
+                      <div class="small text-danger fw-semibold">JazzCash pending verification</div>
+                    <% } %>
+                  </div>
+                  <div class="text-end">
+                    <span class="badge bg-<%= badge %>"><%= st %></span>
+                    <div class="small text-muted mt-1"><%= fmtDate(o.created_at) %></div>
+                  </div>
+                </div>
+              </div>
+            <% }) %>
+          </div>
+        </div>
+
+        <div class="table-responsive d-none d-md-block">
+          <table class="table table-sm align-middle">
+            <thead class="table-light">
+              <tr>
+                <th>ID</th>
+                <th>Qty</th>
+                <th>Status</th>
+                <th>Total</th>
+                <th>Paid</th>
+                <th>Due</th>
+                <th>Created</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% recentOrders.forEach(o => { 
+                  const qty = billQty(o);
+                  const total = totalBill(o);
+                  const paid = paidAmt(o);
+                  const due = dueAmt(o);
+                  const st = String(o.status || "");
+                  const badge = statusBadge(st);
+                  const showJazzPending = isJazzPending(o);
+              %>
+                <tr>
+                  <td class="text-nowrap">#<%= o.id %></td>
+                  <td><%= qty %></td>
+                  <td>
+                    <span class="badge bg-<%= badge %>"><%= st %></span>
+                    <% if (showJazzPending) { %>
+                      <span class="badge bg-warning text-dark ms-1">Jazz pending</span>
+                    <% } %>
+                  </td>
+                  <td><%= total %> <%= currency %></td>
+                  <td><%= paid %> <%= currency %></td>
+                  <td class="<%= due > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= due %></td>
+                  <td class="smallmuted"><%= fmtDate(o.created_at) %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+
+      <% } %>
+
+    </div>
+  </div>
+
+</div>
+
+<div class="accordion mt-3" id="custAcc">
+
+  <div class="accordion-item">
+    <h2 class="accordion-header" id="hMonthly">
+      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#cMonthly" aria-expanded="false" aria-controls="cMonthly">
+        Monthly consumption
+      </button>
+    </h2>
+    <div id="cMonthly" class="accordion-collapse collapse" aria-labelledby="hMonthly" data-bs-parent="#custAcc">
+      <div class="accordion-body">
+        <% if (!monthlyConsumption || monthlyConsumption.length === 0) { %>
+          <div class="text-muted">No delivery data yet</div>
+        <% } else { %>
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead class="table-light">
+                <tr>
+                  <th>Month</th>
+                  <th>Bottles delivered</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% monthlyConsumption.forEach(m => { %>
+                  <tr>
+                    <td><%= m.ym %></td>
+                    <td><%= safeNum(m.qty) %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <div class="accordion-item">
+    <h2 class="accordion-header" id="hLedger">
+      <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" data-bs-target="#cLedger" aria-expanded="false" aria-controls="cLedger">
+        Ledger
+      </button>
+    </h2>
+    <div id="cLedger" class="accordion-collapse collapse" aria-labelledby="hLedger" data-bs-parent="#custAcc">
+      <div class="accordion-body">
+        <% if (!ledger || ledger.length === 0) { %>
+          <div class="text-muted">No ledger entries yet</div>
+        <% } else { %>
+          <div class="table-responsive">
+            <table class="table table-sm">
+              <thead class="table-light">
+                <tr>
+                  <th>Date</th>
+                  <th>Type</th>
+                  <th>Amount</th>
+                  <th>Method</th>
+                  <th>Note</th>
+                </tr>
+              </thead>
+              <tbody>
+                <% ledger.forEach(l => { %>
+                  <tr>
+                    <td class="smallmuted"><%= fmtDate(l.created_at) %></td>
+                    <td><span class="badge bg-light text-dark"><%= l.entry_type %></span></td>
+                    <td><%= safeNum(l.amount) %></td>
+                    <td class="smallmuted"><%= l.method || "" %></td>
+                    <td class="smallmuted"><%= l.note || "" %></td>
+                  </tr>
+                <% }) %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<script>
+  (function () {
+    try {
+      var unitPrice = <%= unitPrice %>;
+      var listPrice = <%= listPrice %>;
+      var discountBottle = <%= discountBottle %>;
+
+      var qtyInput = document.getElementById("qtyInput");
+      var estTotal = document.getElementById("estTotal");
+      var estListTotal = document.getElementById("estListTotal");
+      var estSave = document.getElementById("estSave");
+
+      function clampQty(q) {
+        var n = Number(q || 1) || 1;
+        if (n < 1) n = 1;
+        if (n > 100) n = 100;
+        return n;
+      }
+
+      function render() {
+        var q = clampQty(qtyInput && qtyInput.value ? qtyInput.value : 1);
+        if (qtyInput) qtyInput.value = q;
+
+        var total = unitPrice * q;
+        var listTotal = listPrice * q;
+        var save = discountBottle * q;
+
+        if (estTotal) estTotal.textContent = total + " <%= currency %>";
+        if (estListTotal) estListTotal.textContent = listTotal + " <%= currency %>";
+        if (estSave) estSave.textContent = save + " <%= currency %>";
+      }
+
+      if (qtyInput) qtyInput.addEventListener("input", render);
+      render();
+    } catch (e) {}
+  })();
+</script>
+
+<script>
+  (function () {
+    try {
+      var form = document.getElementById("orderForm");
+      var btn = document.getElementById("orderBtn");
+      if (!form || !btn) return;
+
+      form.addEventListener("submit", function () {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Placing...';
+      });
+    } catch (e) {}
+  })();
+</script>
+
+<%- include("_footer") %>

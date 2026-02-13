@@ -1,0 +1,1303 @@
+<%- include("_header", { title: "Orders", appName, logoUrl, user }) %>
+
+<%
+  const safeNum = (v) => Number(v || 0) || 0;
+
+  const fmtDate = (iso) => {
+    try {
+      if (!iso) return "";
+      return new Date(iso).toLocaleString();
+    } catch (e) {
+      return "";
+    }
+  };
+
+  const statusBadge = (st) => {
+    const s = String(st || "").toLowerCase();
+    if (s === "pending") return "secondary";
+    if (s === "assigned") return "primary";
+    if (s === "accepted") return "info";
+    if (s === "onway") return "warning";
+    if (s === "delivered") return "success";
+    if (s === "cancelled") return "dark";
+    return "light";
+  };
+
+  const qtyForBill = (o) => {
+    const dq = safeNum(o && o.delivered_qty);
+    if (dq > 0) return dq;
+    return safeNum(o && o.quantity_requested);
+  };
+
+  const totalBill = (o) => safeNum(o && o.unit_price) * qtyForBill(o);
+
+  const paidAmt = (o) => safeNum(o && o.payment_amount);
+
+  const dueAmt = (o) => Math.max(0, totalBill(o) - paidAmt(o));
+
+  const outstandingAmt = (o) => Math.max(0, safeNum(o && o.outstanding));
+
+  const totalDueAfterDelivery = (o) => {
+    const st = String(o && o.status ? o.status : "").toLowerCase();
+    if (st === "delivered") return outstandingAmt(o);
+    return outstandingAmt(o) + dueAmt(o);
+  };
+
+  const isJazzPending = (o) => {
+    const m = String((o && o.payment_method) || "").toLowerCase();
+    const pr = safeNum(o && o.payment_received);
+    return (String(o.status || "").toLowerCase() === "delivered") && (m === "jazzcash") && (pr === 0);
+  };
+
+  const allOrders = Array.isArray(orders) ? orders : [];
+  const getSt = (o) => String((o && o.status) || "").toLowerCase();
+
+  const pendingOrders = allOrders.filter(o => getSt(o) === "pending");
+
+  const inProgressOrders = allOrders.filter(o => {
+    const st = getSt(o);
+    if (st === "pending") return false;
+    if (st === "delivered") return false;
+    return true;
+  });
+
+  const deliveredOrders = allOrders.filter(o => getSt(o) === "delivered");
+%>
+
+<style>
+  .badge_admin{
+    display:inline-block;
+    padding:2px 8px;
+    border-radius:999px;
+    font-size:12px;
+    font-weight:800;
+    background:#fff7ed;
+    border:1px solid #fed7aa;
+    color:#9a3412;
+    margin-left:8px;
+    vertical-align:middle;
+  }
+
+  .btn_primary{
+    background:#111827;color:#fff;border:0;border-radius:10px;
+    padding:10px 14px;cursor:pointer;font-weight:600
+  }
+  .btn_ghost{
+    background:#fff;color:#111827;border:1px solid #e5e7eb;border-radius:10px;
+    padding:10px 14px;cursor:pointer;font-weight:600
+  }
+  .modal_backdrop{
+    position:fixed;inset:0;background:rgba(0,0,0,.45);
+    display:flex;align-items:center;justify-content:center;z-index:9999;
+    padding:16px
+  }
+  .hidden{display:none !important}
+  .modal_card{
+    width:100%;max-width:720px;background:#fff;border-radius:14px;
+    box-shadow:0 20px 50px rgba(0,0,0,.2);overflow:hidden
+  }
+  .modal_head{
+    display:flex;align-items:center;justify-content:space-between;
+    padding:14px 16px;border-bottom:1px solid #eee
+  }
+  .modal_body{padding:16px}
+  .form_row{margin:10px 0}
+  .form_row label{display:block;font-weight:700;margin-bottom:6px}
+  .form_row input,.form_row select{
+    width:100%;padding:10px 12px;border:1px solid #e5e7eb;border-radius:10px;
+    outline:none
+  }
+  .result_list{
+    border:1px solid #e5e7eb;border-radius:12px;overflow:hidden;margin-top:10px
+  }
+  .result_item{
+    padding:10px 12px;border-bottom:1px solid #f1f5f9;cursor:pointer
+  }
+  .result_item:hover{background:#f9fafb}
+  .result_item:last-child{border-bottom:0}
+  .muted{color:#6b7280;font-size:12px}
+  .selected_box{
+    margin-top:12px;padding:12px;border:1px solid #dbeafe;background:#eff6ff;border-radius:12px
+  }
+  .modal_actions{display:flex;gap:10px;justify-content:flex-end;margin-top:14px}
+  .msg{margin-top:10px;font-size:13px}
+  .msg_ok{color:#065f46}
+  .msg_err{color:#b91c1c}
+</style>
+
+<div class="card cardsoft p-3 p-md-4">
+  <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+    <div>
+      <div class="h5 mb-1">Orders</div>
+      <div class="smallmuted">Assign riders and manage status and payments</div>
+    </div>
+    <div class="d-flex flex-wrap gap-2">
+      <button type="button" id="btnGenOrder" class="btn btn-primary btnround">Generate Order</button>
+      <a class="btn btn-outline-dark btnround" href="/admin">Dashboard</a>
+      <a class="btn btn-outline-primary btnround" href="/admin/pending_jazzcash">Pending JazzCash</a>
+    </div>
+  </div>
+
+  <hr class="my-3">
+
+  <% if (!allOrders || allOrders.length === 0) { %>
+    <div class="text-muted text-center py-4">No orders</div>
+  <% } %>
+
+  <!-- Mobile cards -->
+  <div class="d-block d-md-none">
+
+    <% if (pendingOrders.length > 0) { %>
+      <div class="small text-muted mb-2">Pending orders</div>
+    <% } %>
+
+    <% (pendingOrders || []).forEach(o => { 
+        const qty = qtyForBill(o);
+        const total = totalBill(o);
+        const paid = paidAmt(o);
+        const due = dueAmt(o);
+        const out = outstandingAmt(o);
+        const totalAll = totalDueAfterDelivery(o);
+        const st = String(o.status || "");
+        const badge = statusBadge(st);
+        const riderNow = o.rider_name || "";
+        const waterNow = o.water_name || "";
+        const methodNow = String(o.payment_method || "").toLowerCase();
+        const jazzPending = isJazzPending(o);
+        const isDelivered = String(o.status || "").toLowerCase() === "delivered";
+        const byAdmin = String(o.created_source || "").toLowerCase() === "admin";
+    %>
+      <div class="card mb-2 <%= jazzPending ? 'border-warning' : '' %>">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div>
+              <div class="fw-bold">Order #<%= o.id %></div>
+              <div class="text-muted small">
+                <%= o.customer_name || "" %>
+                <% if (byAdmin) { %><span class="badge_admin">by admin</span><% } %>
+              </div>
+              <div class="text-muted small">
+                Water <%= waterNow || "NA" %>  Qty <%= qty %>
+              </div>
+            </div>
+            <div class="text-end">
+              <span class="badge bg-<%= badge %>"><%= st %></span>
+              <% if (jazzPending) { %>
+                <div class="small text-warning mt-1">JazzCash pending</div>
+              <% } %>
+            </div>
+          </div>
+
+          <div class="mt-2 small">
+            <div>Order total <strong><%= total %> <%= currency %></strong></div>
+            <div>
+              Order paid <strong><%= paid %> <%= currency %></strong>
+              Order due <strong class="<%= due > 0 ? 'text-danger' : '' %>"><%= due %> <%= currency %></strong>
+            </div>
+
+            <% if (!isDelivered) { %>
+              <div>
+                Previous udhaar
+                <strong class="<%= out > 0 ? 'text-danger' : 'text-muted' %>"><%= out %> <%= currency %></strong>
+              </div>
+              <div>
+                Total due after delivery
+                <strong class="<%= totalAll > 0 ? 'text-danger' : 'text-muted' %>"><%= totalAll %> <%= currency %></strong>
+              </div>
+            <% } else { %>
+              <div>
+                Customer outstanding
+                <strong class="<%= out > 0 ? 'text-danger' : 'text-muted' %>"><%= out %> <%= currency %></strong>
+              </div>
+            <% } %>
+
+            <div class="text-muted">Created <%= fmtDate(o.created_at) %></div>
+            <% if (o.delivered_at) { %><div class="text-muted">Delivered <%= fmtDate(o.delivered_at) %></div><% } %>
+            <% if (riderNow) { %><div class="text-muted">Rider <%= riderNow %></div><% } %>
+          </div>
+
+          <details class="mt-3">
+            <summary class="small text-primary">Open controls</summary>
+
+            <div class="mt-3">
+              <% if (String(o.status || "").toLowerCase() !== "delivered") { %>
+                <form method="post" action="/admin/orders/<%= o.id %>/status" class="d-flex gap-2 align-items-center mb-2">
+                  <select class="form-select form-select-sm" name="status" required>
+                    <option value="pending" <%= o.status==="pending"?"selected":"" %>>Pending</option>
+                    <option value="assigned" <%= o.status==="assigned"?"selected":"" %>>Assigned</option>
+                    <option value="accepted" <%= o.status==="accepted"?"selected":"" %>>In progress</option>
+                    <option value="onway" <%= o.status==="onway"?"selected":"" %>>On the way</option>
+                    <option value="cancelled" <%= o.status==="cancelled"?"selected":"" %>>Cancelled</option>
+                  </select>
+                  <button class="btn btn-sm btn-outline-primary btnround">Update</button>
+                </form>
+
+                <form method="post" action="/admin/orders/<%= o.id %>/assign" class="d-flex gap-2 align-items-center mb-2">
+                  <select class="form-select form-select-sm" name="rider_id" required>
+                    <option value="">Select rider</option>
+                    <% (riders || []).forEach(r => { %>
+                      <option value="<%= r.id %>" <%= String(o.rider_id||"")===String(r.id) ? "selected" : "" %>><%= r.name %> (<%= r.id %>)</option>
+                    <% }) %>
+                  </select>
+                  <button class="btn btn-sm btn-primary btnround">Assign</button>
+                </form>
+
+                <form method="post" action="/admin/orders/<%= o.id %>/status" class="p-2 border rounded">
+                  <input type="hidden" name="status" value="delivered">
+
+                  <div class="row g-2">
+                    <div class="col-6">
+                      <label class="form-label small m-0">Delivered qty</label>
+                      <input class="form-control form-control-sm" type="number" name="delivered_qty" min="0" value="<%= qty %>">
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small m-0">Empty returned</label>
+                      <input class="form-control form-control-sm" type="number" name="empty_returned_qty" min="0" value="<%= safeNum(o.empty_returned_qty) %>">
+                    </div>
+
+                    <div class="col-6">
+                      <label class="form-label small m-0">Payment method</label>
+                      <select class="form-select form-select-sm" name="payment_method">
+                        <option value="cash" <%= methodNow==="cash"?"selected":"" %>>Cash</option>
+                        <option value="jazzcash" <%= methodNow==="jazzcash"?"selected":"" %>>JazzCash</option>
+                      </select>
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small m-0">Amount received</label>
+                      <input class="form-control form-control-sm" type="number" name="payment_amount" min="0" value="<%= paid %>">
+                    </div>
+
+                    <div class="col-12 d-grid">
+                      <button class="btn btn-sm btn-outline-success btnround">Mark delivered</button>
+                    </div>
+                  </div>
+                </form>
+              <% } else { %>
+                <div class="text-muted small">Delivered order</div>
+
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                  <a class="btn btn-sm btn-outline-success btnround" href="/admin/orders/<%= o.id %>/whatsapp" target="_blank" rel="noopener">WhatsApp invoice</a>
+
+                  <% if (jazzPending) { %>
+                    <a class="btn btn-sm btn-success btnround" href="/admin/orders/<%= o.id %>/jazzcash_whatsapp" target="_blank" rel="noopener">WhatsApp reminder</a>
+
+                    <form action="/admin/orders/<%= o.id %>/verify_jazzcash" method="POST" class="m-0">
+                      <button type="submit" class="btn btn-sm btn-primary btnround">Verify received</button>
+                    </form>
+                  <% } %>
+                </div>
+              <% } %>
+            </div>
+
+          </details>
+        </div>
+      </div>
+    <% }) %>
+
+    <% if (inProgressOrders.length > 0) { %>
+      <div class="small text-muted mb-2 mt-3">Assigned and in progress orders</div>
+    <% } %>
+
+    <% (inProgressOrders || []).forEach(o => { 
+        const qty = qtyForBill(o);
+        const total = totalBill(o);
+        const paid = paidAmt(o);
+        const due = dueAmt(o);
+        const out = outstandingAmt(o);
+        const totalAll = totalDueAfterDelivery(o);
+        const st = String(o.status || "");
+        const badge = statusBadge(st);
+        const riderNow = o.rider_name || "";
+        const waterNow = o.water_name || "";
+        const methodNow = String(o.payment_method || "").toLowerCase();
+        const jazzPending = isJazzPending(o);
+        const isDelivered = String(o.status || "").toLowerCase() === "delivered";
+        const byAdmin = String(o.created_source || "").toLowerCase() === "admin";
+    %>
+      <div class="card mb-2 <%= jazzPending ? 'border-warning' : '' %>">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div>
+              <div class="fw-bold">Order #<%= o.id %></div>
+              <div class="text-muted small">
+                <%= o.customer_name || "" %>
+                <% if (byAdmin) { %><span class="badge_admin">by admin</span><% } %>
+              </div>
+              <div class="text-muted small">
+                Water <%= waterNow || "NA" %>  Qty <%= qty %>
+              </div>
+            </div>
+            <div class="text-end">
+              <span class="badge bg-<%= badge %>"><%= st %></span>
+              <% if (jazzPending) { %>
+                <div class="small text-warning mt-1">JazzCash pending</div>
+              <% } %>
+            </div>
+          </div>
+
+          <div class="mt-2 small">
+            <div>Order total <strong><%= total %> <%= currency %></strong></div>
+            <div>
+              Order paid <strong><%= paid %> <%= currency %></strong>
+              Order due <strong class="<%= due > 0 ? 'text-danger' : '' %>"><%= due %> <%= currency %></strong>
+            </div>
+
+            <% if (!isDelivered) { %>
+              <div>
+                Previous udhaar
+                <strong class="<%= out > 0 ? 'text-danger' : 'text-muted' %>"><%= out %> <%= currency %></strong>
+              </div>
+              <div>
+                Total due after delivery
+                <strong class="<%= totalAll > 0 ? 'text-danger' : 'text-muted' %>"><%= totalAll %> <%= currency %></strong>
+              </div>
+            <% } else { %>
+              <div>
+                Customer outstanding
+                <strong class="<%= out > 0 ? 'text-danger' : 'text-muted' %>"><%= out %> <%= currency %></strong>
+              </div>
+            <% } %>
+
+            <div class="text-muted">Created <%= fmtDate(o.created_at) %></div>
+            <% if (o.delivered_at) { %><div class="text-muted">Delivered <%= fmtDate(o.delivered_at) %></div><% } %>
+            <% if (riderNow) { %><div class="text-muted">Rider <%= riderNow %></div><% } %>
+          </div>
+
+          <details class="mt-3">
+            <summary class="small text-primary">Open controls</summary>
+
+            <div class="mt-3">
+              <% if (String(o.status || "").toLowerCase() !== "delivered") { %>
+                <form method="post" action="/admin/orders/<%= o.id %>/status" class="d-flex gap-2 align-items-center mb-2">
+                  <select class="form-select form-select-sm" name="status" required>
+                    <option value="pending" <%= o.status==="pending"?"selected":"" %>>Pending</option>
+                    <option value="assigned" <%= o.status==="assigned"?"selected":"" %>>Assigned</option>
+                    <option value="accepted" <%= o.status==="accepted"?"selected":"" %>>In progress</option>
+                    <option value="onway" <%= o.status==="onway"?"selected":"" %>>On the way</option>
+                    <option value="cancelled" <%= o.status==="cancelled"?"selected":"" %>>Cancelled</option>
+                  </select>
+                  <button class="btn btn-sm btn-outline-primary btnround">Update</button>
+                </form>
+
+                <form method="post" action="/admin/orders/<%= o.id %>/assign" class="d-flex gap-2 align-items-center mb-2">
+                  <select class="form-select form-select-sm" name="rider_id" required>
+                    <option value="">Select rider</option>
+                    <% (riders || []).forEach(r => { %>
+                      <option value="<%= r.id %>" <%= String(o.rider_id||"")===String(r.id) ? "selected" : "" %>><%= r.name %> (<%= r.id %>)</option>
+                    <% }) %>
+                  </select>
+                  <button class="btn btn-sm btn-primary btnround">Assign</button>
+                </form>
+
+                <form method="post" action="/admin/orders/<%= o.id %>/status" class="p-2 border rounded">
+                  <input type="hidden" name="status" value="delivered">
+
+                  <div class="row g-2">
+                    <div class="col-6">
+                      <label class="form-label small m-0">Delivered qty</label>
+                      <input class="form-control form-control-sm" type="number" name="delivered_qty" min="0" value="<%= qty %>">
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small m-0">Empty returned</label>
+                      <input class="form-control form-control-sm" type="number" name="empty_returned_qty" min="0" value="<%= safeNum(o.empty_returned_qty) %>">
+                    </div>
+
+                    <div class="col-6">
+                      <label class="form-label small m-0">Payment method</label>
+                      <select class="form-select form-select-sm" name="payment_method">
+                        <option value="cash" <%= methodNow==="cash"?"selected":"" %>>Cash</option>
+                        <option value="jazzcash" <%= methodNow==="jazzcash"?"selected":"" %>>JazzCash</option>
+                      </select>
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small m-0">Amount received</label>
+                      <input class="form-control form-control-sm" type="number" name="payment_amount" min="0" value="<%= paid %>">
+                    </div>
+
+                    <div class="col-12 d-grid">
+                      <button class="btn btn-sm btn-outline-success btnround">Mark delivered</button>
+                    </div>
+                  </div>
+                </form>
+              <% } else { %>
+                <div class="text-muted small">Delivered order</div>
+
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                  <a class="btn btn-sm btn-outline-success btnround" href="/admin/orders/<%= o.id %>/whatsapp" target="_blank" rel="noopener">WhatsApp invoice</a>
+
+                  <% if (jazzPending) { %>
+                    <a class="btn btn-sm btn-success btnround" href="/admin/orders/<%= o.id %>/jazzcash_whatsapp" target="_blank" rel="noopener">WhatsApp reminder</a>
+
+                    <form action="/admin/orders/<%= o.id %>/verify_jazzcash" method="POST" class="m-0">
+                      <button type="submit" class="btn btn-sm btn-primary btnround">Verify received</button>
+                    </form>
+                  <% } %>
+                </div>
+              <% } %>
+            </div>
+
+          </details>
+        </div>
+      </div>
+    <% }) %>
+
+    <% if (deliveredOrders.length > 0) { %>
+      <div class="small text-muted mb-2 mt-3">Delivered orders</div>
+    <% } %>
+
+    <% (deliveredOrders || []).forEach(o => { 
+        const qty = qtyForBill(o);
+        const total = totalBill(o);
+        const paid = paidAmt(o);
+        const due = dueAmt(o);
+        const out = outstandingAmt(o);
+        const totalAll = totalDueAfterDelivery(o);
+        const st = String(o.status || "");
+        const badge = statusBadge(st);
+        const riderNow = o.rider_name || "";
+        const waterNow = o.water_name || "";
+        const methodNow = String(o.payment_method || "").toLowerCase();
+        const jazzPending = isJazzPending(o);
+        const isDelivered = String(o.status || "").toLowerCase() === "delivered";
+        const byAdmin = String(o.created_source || "").toLowerCase() === "admin";
+    %>
+      <div class="card mb-2 <%= jazzPending ? 'border-warning' : '' %>">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start gap-2">
+            <div>
+              <div class="fw-bold">Order #<%= o.id %></div>
+              <div class="text-muted small">
+                <%= o.customer_name || "" %>
+                <% if (byAdmin) { %><span class="badge_admin">by admin</span><% } %>
+              </div>
+              <div class="text-muted small">
+                Water <%= waterNow || "NA" %>  Qty <%= qty %>
+              </div>
+            </div>
+            <div class="text-end">
+              <span class="badge bg-<%= badge %>"><%= st %></span>
+              <% if (jazzPending) { %>
+                <div class="small text-warning mt-1">JazzCash pending</div>
+              <% } %>
+            </div>
+          </div>
+
+          <div class="mt-2 small">
+            <div>Order total <strong><%= total %> <%= currency %></strong></div>
+            <div>
+              Order paid <strong><%= paid %> <%= currency %></strong>
+              Order due <strong class="<%= due > 0 ? 'text-danger' : '' %>"><%= due %> <%= currency %></strong>
+            </div>
+
+            <% if (!isDelivered) { %>
+              <div>
+                Previous udhaar
+                <strong class="<%= out > 0 ? 'text-danger' : 'text-muted' %>"><%= out %> <%= currency %></strong>
+              </div>
+              <div>
+                Total due after delivery
+                <strong class="<%= totalAll > 0 ? 'text-danger' : 'text-muted' %>"><%= totalAll %> <%= currency %></strong>
+              </div>
+            <% } else { %>
+              <div>
+                Customer outstanding
+                <strong class="<%= out > 0 ? 'text-danger' : 'text-muted' %>"><%= out %> <%= currency %></strong>
+              </div>
+            <% } %>
+
+            <div class="text-muted">Created <%= fmtDate(o.created_at) %></div>
+            <% if (o.delivered_at) { %><div class="text-muted">Delivered <%= fmtDate(o.delivered_at) %></div><% } %>
+            <% if (riderNow) { %><div class="text-muted">Rider <%= riderNow %></div><% } %>
+          </div>
+
+          <details class="mt-3">
+            <summary class="small text-primary">Open controls</summary>
+
+            <div class="mt-3">
+              <% if (String(o.status || "").toLowerCase() !== "delivered") { %>
+                <form method="post" action="/admin/orders/<%= o.id %>/status" class="d-flex gap-2 align-items-center mb-2">
+                  <select class="form-select form-select-sm" name="status" required>
+                    <option value="pending" <%= o.status==="pending"?"selected":"" %>>Pending</option>
+                    <option value="assigned" <%= o.status==="assigned"?"selected":"" %>>Assigned</option>
+                    <option value="accepted" <%= o.status==="accepted"?"selected":"" %>>In progress</option>
+                    <option value="onway" <%= o.status==="onway"?"selected":"" %>>On the way</option>
+                    <option value="cancelled" <%= o.status==="cancelled"?"selected":"" %>>Cancelled</option>
+                  </select>
+                  <button class="btn btn-sm btn-outline-primary btnround">Update</button>
+                </form>
+
+                <form method="post" action="/admin/orders/<%= o.id %>/assign" class="d-flex gap-2 align-items-center mb-2">
+                  <select class="form-select form-select-sm" name="rider_id" required>
+                    <option value="">Select rider</option>
+                    <% (riders || []).forEach(r => { %>
+                      <option value="<%= r.id %>" <%= String(o.rider_id||"")===String(r.id) ? "selected" : "" %>><%= r.name %> (<%= r.id %>)</option>
+                    <% }) %>
+                  </select>
+                  <button class="btn btn-sm btn-primary btnround">Assign</button>
+                </form>
+
+                <form method="post" action="/admin/orders/<%= o.id %>/status" class="p-2 border rounded">
+                  <input type="hidden" name="status" value="delivered">
+
+                  <div class="row g-2">
+                    <div class="col-6">
+                      <label class="form-label small m-0">Delivered qty</label>
+                      <input class="form-control form-control-sm" type="number" name="delivered_qty" min="0" value="<%= qty %>">
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small m-0">Empty returned</label>
+                      <input class="form-control form-control-sm" type="number" name="empty_returned_qty" min="0" value="<%= safeNum(o.empty_returned_qty) %>">
+                    </div>
+
+                    <div class="col-6">
+                      <label class="form-label small m-0">Payment method</label>
+                      <select class="form-select form-select-sm" name="payment_method">
+                        <option value="cash" <%= methodNow==="cash"?"selected":"" %>>Cash</option>
+                        <option value="jazzcash" <%= methodNow==="jazzcash"?"selected":"" %>>JazzCash</option>
+                      </select>
+                    </div>
+                    <div class="col-6">
+                      <label class="form-label small m-0">Amount received</label>
+                      <input class="form-control form-control-sm" type="number" name="payment_amount" min="0" value="<%= paid %>">
+                    </div>
+
+                    <div class="col-12 d-grid">
+                      <button class="btn btn-sm btn-outline-success btnround">Mark delivered</button>
+                    </div>
+                  </div>
+                </form>
+              <% } else { %>
+                <div class="text-muted small">Delivered order</div>
+
+                <div class="d-flex flex-wrap gap-2 mt-2">
+                  <a class="btn btn-sm btn-outline-success btnround" href="/admin/orders/<%= o.id %>/whatsapp" target="_blank" rel="noopener">WhatsApp invoice</a>
+
+                  <% if (jazzPending) { %>
+                    <a class="btn btn-sm btn-success btnround" href="/admin/orders/<%= o.id %>/jazzcash_whatsapp" target="_blank" rel="noopener">WhatsApp reminder</a>
+
+                    <form action="/admin/orders/<%= o.id %>/verify_jazzcash" method="POST" class="m-0">
+                      <button type="submit" class="btn btn-sm btn-primary btnround">Verify received</button>
+                    </form>
+                  <% } %>
+                </div>
+              <% } %>
+            </div>
+
+          </details>
+        </div>
+      </div>
+    <% }) %>
+
+  </div>
+
+  <!-- Desktop table -->
+  <div class="table-responsive d-none d-md-block">
+    <table class="table table-sm align-middle">
+      <thead class="table-light">
+        <tr>
+          <th>ID</th>
+          <th>Customer</th>
+          <th>Water</th>
+          <th>Qty</th>
+          <th>Status</th>
+          <th>Rider</th>
+          <th class="text-nowrap">Assign rider</th>
+          <th class="text-nowrap">Mark delivered</th>
+          <th class="text-nowrap">Created</th>
+          <th class="text-nowrap">Invoice</th>
+        </tr>
+      </thead>
+
+      <tbody>
+
+        <% if (pendingOrders.length > 0) { %>
+          <tr class="table-light">
+            <td colspan="10" class="fw-semibold">Pending orders</td>
+          </tr>
+        <% } %>
+
+        <% (pendingOrders || []).forEach(o => { 
+            const qty = qtyForBill(o);
+            const total = totalBill(o);
+            const paid = paidAmt(o);
+            const due = dueAmt(o);
+            const out = outstandingAmt(o);
+            const totalAll = totalDueAfterDelivery(o);
+            const st = String(o.status || "");
+            const badge = statusBadge(st);
+            const methodNow = String(o.payment_method || "").toLowerCase();
+            const jazzPending = isJazzPending(o);
+            const isDelivered = String(o.status || "").toLowerCase() === "delivered";
+            const byAdmin = String(o.created_source || "").toLowerCase() === "admin";
+        %>
+          <tr class="<%= jazzPending ? 'table-warning' : '' %>">
+            <td class="text-nowrap">#<%= o.id %></td>
+            <td>
+              <div class="fw-semibold">
+                <%= o.customer_name || "" %>
+                <% if (byAdmin) { %><span class="badge_admin">by admin</span><% } %>
+              </div>
+
+              <div class="small text-muted">
+                Order total <%= total %> <%= currency %>
+                Order paid <%= paid %> <%= currency %>
+                Order due <span class="<%= due > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= due %></span>
+              </div>
+
+              <% if (!isDelivered) { %>
+                <div class="small text-muted">
+                  Previous udhaar
+                  <span class="<%= out > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= out %></span>
+                  Total due after delivery
+                  <span class="<%= totalAll > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= totalAll %></span>
+                </div>
+              <% } else { %>
+                <div class="small text-muted">
+                  Customer outstanding
+                  <span class="<%= out > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= out %></span>
+                </div>
+              <% } %>
+            </td>
+            <td class="text-nowrap"><%= o.water_name || "" %></td>
+            <td class="text-nowrap"><%= qty %></td>
+
+            <td style="min-width:260px">
+              <div class="d-flex flex-column gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <span class="badge bg-<%= badge %>"><%= st %></span>
+                  <% if (jazzPending) { %><span class="badge bg-warning text-dark">JazzCash pending</span><% } %>
+                </div>
+
+                <% if (String(o.status || "").toLowerCase() !== "delivered") { %>
+                  <form method="post" action="/admin/orders/<%= o.id %>/status" class="d-flex gap-2 align-items-center">
+                    <select class="form-select form-select-sm" name="status" style="max-width:200px" required>
+                      <option value="pending" <%= o.status==="pending"?"selected":"" %>>Pending</option>
+                      <option value="assigned" <%= o.status==="assigned"?"selected":"" %>>Assigned</option>
+                      <option value="accepted" <%= o.status==="accepted"?"selected":"" %>>In progress</option>
+                      <option value="onway" <%= o.status==="onway"?"selected":"" %>>On the way</option>
+                      <option value="cancelled" <%= o.status==="cancelled"?"selected":"" %>>Cancelled</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary btnround">Update</button>
+                  </form>
+                <% } else { %>
+                  <div class="small text-muted">
+                    Method <%= (o.payment_method || "cash") %>
+                    <% if (o.delivered_at) { %>  Delivered <%= fmtDate(o.delivered_at) %> <% } %>
+                  </div>
+                <% } %>
+              </div>
+            </td>
+
+            <td class="smallmuted text-nowrap"><%= o.rider_name || "" %></td>
+
+            <td style="min-width:280px">
+              <% if (String(o.status || "").toLowerCase() !== "delivered") { %>
+                <form method="post" action="/admin/orders/<%= o.id %>/assign" class="d-flex gap-2">
+                  <select class="form-select form-select-sm" name="rider_id" required>
+                    <option value="">Select rider</option>
+                    <% (riders || []).forEach(r => { %>
+                      <option value="<%= r.id %>" <%= String(o.rider_id||"")===String(r.id) ? "selected" : "" %>><%= r.name %> (<%= r.id %>)</option>
+                    <% }) %>
+                  </select>
+                  <button class="btn btn-sm btn-primary btnround">Assign</button>
+                </form>
+              <% } else { %>
+                <span class="smallmuted">Done</span>
+              <% } %>
+            </td>
+
+            <td style="min-width:340px">
+              <% if (String(o.status || "").toLowerCase() !== "delivered") { %>
+                <form method="post" action="/admin/orders/<%= o.id %>/status" class="row g-2">
+                  <input type="hidden" name="status" value="delivered">
+
+                  <div class="col-3">
+                    <input class="form-control form-control-sm" type="number" name="delivered_qty" min="0" value="<%= qty %>" title="Delivered qty">
+                  </div>
+                  <div class="col-3">
+                    <input class="form-control form-control-sm" type="number" name="empty_returned_qty" min="0" value="<%= safeNum(o.empty_returned_qty) %>" title="Empty returned">
+                  </div>
+                  <div class="col-3">
+                    <select class="form-select form-select-sm" name="payment_method" title="Payment method">
+                      <option value="cash" <%= methodNow==="cash"?"selected":"" %>>Cash</option>
+                      <option value="jazzcash" <%= methodNow==="jazzcash"?"selected":"" %>>JazzCash</option>
+                    </select>
+                  </div>
+                  <div class="col-3">
+                    <input class="form-control form-control-sm" type="number" name="payment_amount" min="0" value="<%= paid %>" title="Amount received">
+                  </div>
+
+                  <div class="col-12 d-grid">
+                    <button class="btn btn-sm btn-outline-success btnround">Mark delivered</button>
+                  </div>
+                </form>
+              <% } else { %>
+                <div class="d-flex flex-wrap gap-2">
+                  <a class="btn btn-sm btn-outline-success btnround" href="/admin/orders/<%= o.id %>/whatsapp" target="_blank" rel="noopener">WhatsApp invoice</a>
+
+                  <% if (jazzPending) { %>
+                    <a class="btn btn-sm btn-success btnround" href="/admin/orders/<%= o.id %>/jazzcash_whatsapp" target="_blank" rel="noopener">WhatsApp reminder</a>
+
+                    <form action="/admin/orders/<%= o.id %>/verify_jazzcash" method="POST" class="m-0">
+                      <button type="submit" class="btn btn-sm btn-primary btnround">Verify received</button>
+                    </form>
+                  <% } %>
+                </div>
+              <% } %>
+            </td>
+
+            <td class="smallmuted text-nowrap"><%= fmtDate(o.created_at) %></td>
+
+            <td class="text-nowrap">
+              <% if (String(o.status || "").toLowerCase() === "delivered") { %>
+                <span class="small text-muted">Done</span>
+              <% } else { %>
+                <span class="smallmuted">After delivery</span>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+
+        <% if (inProgressOrders.length > 0) { %>
+          <tr class="table-light">
+            <td colspan="10" class="fw-semibold">Assigned and in progress orders</td>
+          </tr>
+        <% } %>
+
+        <% (inProgressOrders || []).forEach(o => { 
+            const qty = qtyForBill(o);
+            const total = totalBill(o);
+            const paid = paidAmt(o);
+            const due = dueAmt(o);
+            const out = outstandingAmt(o);
+            const totalAll = totalDueAfterDelivery(o);
+            const st = String(o.status || "");
+            const badge = statusBadge(st);
+            const methodNow = String(o.payment_method || "").toLowerCase();
+            const jazzPending = isJazzPending(o);
+            const isDelivered = String(o.status || "").toLowerCase() === "delivered";
+            const byAdmin = String(o.created_source || "").toLowerCase() === "admin";
+        %>
+          <tr class="<%= jazzPending ? 'table-warning' : '' %>">
+            <td class="text-nowrap">#<%= o.id %></td>
+            <td>
+              <div class="fw-semibold">
+                <%= o.customer_name || "" %>
+                <% if (byAdmin) { %><span class="badge_admin">by admin</span><% } %>
+              </div>
+
+              <div class="small text-muted">
+                Order total <%= total %> <%= currency %>
+                Order paid <%= paid %> <%= currency %>
+                Order due <span class="<%= due > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= due %></span>
+              </div>
+
+              <% if (!isDelivered) { %>
+                <div class="small text-muted">
+                  Previous udhaar
+                  <span class="<%= out > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= out %></span>
+                  Total due after delivery
+                  <span class="<%= totalAll > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= totalAll %></span>
+                </div>
+              <% } else { %>
+                <div class="small text-muted">
+                  Customer outstanding
+                  <span class="<%= out > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= out %></span>
+                </div>
+              <% } %>
+            </td>
+            <td class="text-nowrap"><%= o.water_name || "" %></td>
+            <td class="text-nowrap"><%= qty %></td>
+
+            <td style="min-width:260px">
+              <div class="d-flex flex-column gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <span class="badge bg-<%= badge %>"><%= st %></span>
+                  <% if (jazzPending) { %><span class="badge bg-warning text-dark">JazzCash pending</span><% } %>
+                </div>
+
+                <% if (String(o.status || "").toLowerCase() !== "delivered") { %>
+                  <form method="post" action="/admin/orders/<%= o.id %>/status" class="d-flex gap-2 align-items-center">
+                    <select class="form-select form-select-sm" name="status" style="max-width:200px" required>
+                      <option value="pending" <%= o.status==="pending"?"selected":"" %>>Pending</option>
+                      <option value="assigned" <%= o.status==="assigned"?"selected":"" %>>Assigned</option>
+                      <option value="accepted" <%= o.status==="accepted"?"selected":"" %>>In progress</option>
+                      <option value="onway" <%= o.status==="onway"?"selected":"" %>>On the way</option>
+                      <option value="cancelled" <%= o.status==="cancelled"?"selected":"" %>>Cancelled</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary btnround">Update</button>
+                  </form>
+                <% } else { %>
+                  <div class="small text-muted">
+                    Method <%= (o.payment_method || "cash") %>
+                    <% if (o.delivered_at) { %>  Delivered <%= fmtDate(o.delivered_at) %> <% } %>
+                  </div>
+                <% } %>
+              </div>
+            </td>
+
+            <td class="smallmuted text-nowrap"><%= o.rider_name || "" %></td>
+
+            <td style="min-width:280px">
+              <% if (String(o.status || "").toLowerCase() !== "delivered") { %>
+                <form method="post" action="/admin/orders/<%= o.id %>/assign" class="d-flex gap-2">
+                  <select class="form-select form-select-sm" name="rider_id" required>
+                    <option value="">Select rider</option>
+                    <% (riders || []).forEach(r => { %>
+                      <option value="<%= r.id %>" <%= String(o.rider_id||"")===String(r.id) ? "selected" : "" %>><%= r.name %> (<%= r.id %>)</option>
+                    <% }) %>
+                  </select>
+                  <button class="btn btn-sm btn-primary btnround">Assign</button>
+                </form>
+              <% } else { %>
+                <span class="smallmuted">Done</span>
+              <% } %>
+            </td>
+
+            <td style="min-width:340px">
+              <% if (String(o.status || "").toLowerCase() !== "delivered") { %>
+                <form method="post" action="/admin/orders/<%= o.id %>/status" class="row g-2">
+                  <input type="hidden" name="status" value="delivered">
+
+                  <div class="col-3">
+                    <input class="form-control form-control-sm" type="number" name="delivered_qty" min="0" value="<%= qty %>" title="Delivered qty">
+                  </div>
+                  <div class="col-3">
+                    <input class="form-control form-control-sm" type="number" name="empty_returned_qty" min="0" value="<%= safeNum(o.empty_returned_qty) %>" title="Empty returned">
+                  </div>
+                  <div class="col-3">
+                    <select class="form-select form-select-sm" name="payment_method" title="Payment method">
+                      <option value="cash" <%= methodNow==="cash"?"selected":"" %>>Cash</option>
+                      <option value="jazzcash" <%= methodNow==="jazzcash"?"selected":"" %>>JazzCash</option>
+                    </select>
+                  </div>
+                  <div class="col-3">
+                    <input class="form-control form-control-sm" type="number" name="payment_amount" min="0" value="<%= paid %>" title="Amount received">
+                  </div>
+
+                  <div class="col-12 d-grid">
+                    <button class="btn btn-sm btn-outline-success btnround">Mark delivered</button>
+                  </div>
+                </form>
+              <% } else { %>
+                <div class="d-flex flex-wrap gap-2">
+                  <a class="btn btn-sm btn-outline-success btnround" href="/admin/orders/<%= o.id %>/whatsapp" target="_blank" rel="noopener">WhatsApp invoice</a>
+
+                  <% if (jazzPending) { %>
+                    <a class="btn btn-sm btn-success btnround" href="/admin/orders/<%= o.id %>/jazzcash_whatsapp" target="_blank" rel="noopener">WhatsApp reminder</a>
+
+                    <form action="/admin/orders/<%= o.id %>/verify_jazzcash" method="POST" class="m-0">
+                      <button type="submit" class="btn btn-sm btn-primary btnround">Verify received</button>
+                    </form>
+                  <% } %>
+                </div>
+              <% } %>
+            </td>
+
+            <td class="smallmuted text-nowrap"><%= fmtDate(o.created_at) %></td>
+
+            <td class="text-nowrap">
+              <% if (String(o.status || "").toLowerCase() === "delivered") { %>
+                <span class="small text-muted">Done</span>
+              <% } else { %>
+                <span class="smallmuted">After delivery</span>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+
+        <% if (deliveredOrders.length > 0) { %>
+          <tr class="table-light">
+            <td colspan="10" class="fw-semibold">Delivered orders</td>
+          </tr>
+        <% } %>
+
+        <% (deliveredOrders || []).forEach(o => { 
+            const qty = qtyForBill(o);
+            const total = totalBill(o);
+            const paid = paidAmt(o);
+            const due = dueAmt(o);
+            const out = outstandingAmt(o);
+            const totalAll = totalDueAfterDelivery(o);
+            const st = String(o.status || "");
+            const badge = statusBadge(st);
+            const methodNow = String(o.payment_method || "").toLowerCase();
+            const jazzPending = isJazzPending(o);
+            const isDelivered = String(o.status || "").toLowerCase() === "delivered";
+            const byAdmin = String(o.created_source || "").toLowerCase() === "admin";
+        %>
+          <tr class="<%= jazzPending ? 'table-warning' : '' %>">
+            <td class="text-nowrap">#<%= o.id %></td>
+            <td>
+              <div class="fw-semibold">
+                <%= o.customer_name || "" %>
+                <% if (byAdmin) { %><span class="badge_admin">by admin</span><% } %>
+              </div>
+
+              <div class="small text-muted">
+                Order total <%= total %> <%= currency %>
+                Order paid <%= paid %> <%= currency %>
+                Order due <span class="<%= due > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= due %></span>
+              </div>
+
+              <% if (!isDelivered) { %>
+                <div class="small text-muted">
+                  Previous udhaar
+                  <span class="<%= out > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= out %></span>
+                  Total due after delivery
+                  <span class="<%= totalAll > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= totalAll %></span>
+                </div>
+              <% } else { %>
+                <div class="small text-muted">
+                  Customer outstanding
+                  <span class="<%= out > 0 ? 'text-danger fw-semibold' : 'text-muted' %>"><%= out %></span>
+                </div>
+              <% } %>
+            </td>
+            <td class="text-nowrap"><%= o.water_name || "" %></td>
+            <td class="text-nowrap"><%= qty %></td>
+
+            <td style="min-width:260px">
+              <div class="d-flex flex-column gap-2">
+                <div class="d-flex align-items-center gap-2">
+                  <span class="badge bg-<%= badge %>"><%= st %></span>
+                  <% if (jazzPending) { %><span class="badge bg-warning text-dark">JazzCash pending</span><% } %>
+                </div>
+
+                <% if (String(o.status || "").toLowerCase() !== "delivered") { %>
+                  <form method="post" action="/admin/orders/<%= o.id %>/status" class="d-flex gap-2 align-items-center">
+                    <select class="form-select form-select-sm" name="status" style="max-width:200px" required>
+                      <option value="pending" <%= o.status==="pending"?"selected":"" %>>Pending</option>
+                      <option value="assigned" <%= o.status==="assigned"?"selected":"" %>>Assigned</option>
+                      <option value="accepted" <%= o.status==="accepted"?"selected":"" %>>In progress</option>
+                      <option value="onway" <%= o.status==="onway"?"selected":"" %>>On the way</option>
+                      <option value="cancelled" <%= o.status==="cancelled"?"selected":"" %>>Cancelled</option>
+                    </select>
+                    <button class="btn btn-sm btn-outline-primary btnround">Update</button>
+                  </form>
+                <% } else { %>
+                  <div class="small text-muted">
+                    Method <%= (o.payment_method || "cash") %>
+                    <% if (o.delivered_at) { %>  Delivered <%= fmtDate(o.delivered_at) %> <% } %>
+                  </div>
+                <% } %>
+              </div>
+            </td>
+
+            <td class="smallmuted text-nowrap"><%= o.rider_name || "" %></td>
+
+            <td style="min-width:280px">
+              <% if (String(o.status || "").toLowerCase() !== "delivered") { %>
+                <form method="post" action="/admin/orders/<%= o.id %>/assign" class="d-flex gap-2">
+                  <select class="form-select form-select-sm" name="rider_id" required>
+                    <option value="">Select rider</option>
+                    <% (riders || []).forEach(r => { %>
+                      <option value="<%= r.id %>" <%= String(o.rider_id||"")===String(r.id) ? "selected" : "" %>><%= r.name %> (<%= r.id %>)</option>
+                    <% }) %>
+                  </select>
+                  <button class="btn btn-sm btn-primary btnround">Assign</button>
+                </form>
+              <% } else { %>
+                <span class="smallmuted">Done</span>
+              <% } %>
+            </td>
+
+            <td style="min-width:340px">
+              <% if (String(o.status || "").toLowerCase() !== "delivered") { %>
+                <form method="post" action="/admin/orders/<%= o.id %>/status" class="row g-2">
+                  <input type="hidden" name="status" value="delivered">
+
+                  <div class="col-3">
+                    <input class="form-control form-control-sm" type="number" name="delivered_qty" min="0" value="<%= qty %>" title="Delivered qty">
+                  </div>
+                  <div class="col-3">
+                    <input class="form-control form-control-sm" type="number" name="empty_returned_qty" min="0" value="<%= safeNum(o.empty_returned_qty) %>" title="Empty returned">
+                  </div>
+                  <div class="col-3">
+                    <select class="form-select form-select-sm" name="payment_method" title="Payment method">
+                      <option value="cash" <%= methodNow==="cash"?"selected":"" %>>Cash</option>
+                      <option value="jazzcash" <%= methodNow==="jazzcash"?"selected":"" %>>JazzCash</option>
+                    </select>
+                  </div>
+                  <div class="col-3">
+                    <input class="form-control form-control-sm" type="number" name="payment_amount" min="0" value="<%= paid %>" title="Amount received">
+                  </div>
+
+                  <div class="col-12 d-grid">
+                    <button class="btn btn-sm btn-outline-success btnround">Mark delivered</button>
+                  </div>
+                </form>
+              <% } else { %>
+                <div class="d-flex flex-wrap gap-2">
+                  <a class="btn btn-sm btn-outline-success btnround" href="/admin/orders/<%= o.id %>/whatsapp" target="_blank" rel="noopener">WhatsApp invoice</a>
+
+                  <% if (jazzPending) { %>
+                    <a class="btn btn-sm btn-success btnround" href="/admin/orders/<%= o.id %>/jazzcash_whatsapp" target="_blank" rel="noopener">WhatsApp reminder</a>
+
+                    <form action="/admin/orders/<%= o.id %>/verify_jazzcash" method="POST" class="m-0">
+                      <button type="submit" class="btn btn-sm btn-primary btnround">Verify received</button>
+                    </form>
+                  <% } %>
+                </div>
+              <% } %>
+            </td>
+
+            <td class="smallmuted text-nowrap"><%= fmtDate(o.created_at) %></td>
+
+            <td class="text-nowrap">
+              <% if (String(o.status || "").toLowerCase() === "delivered") { %>
+                <span class="small text-muted">Done</span>
+              <% } else { %>
+                <span class="smallmuted">After delivery</span>
+              <% } %>
+            </td>
+          </tr>
+        <% }) %>
+
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<div id="generateOrderModal" class="modal_backdrop hidden" aria-hidden="true">
+  <div class="modal_card" role="dialog" aria-modal="true">
+    <div class="modal_head">
+      <div style="font-size:16px;font-weight:800">Generate Order</div>
+      <button type="button" id="closeGenerateOrderBtn" class="btn_ghost">Close</button>
+    </div>
+
+    <div class="modal_body">
+      <div class="form_row">
+        <label>Customer search</label>
+        <input id="custSearchInput" type="text" placeholder="Type name, id, phone" autocomplete="off" />
+        <div class="muted" style="margin-top:6px">Search result select karo phir quantity set karo</div>
+        <div id="custSearchResults" class="result_list hidden"></div>
+      </div>
+
+      <div id="selectedCustomerBox" class="selected_box hidden">
+        <div style="display:flex;justify-content:space-between;gap:12px;flex-wrap:wrap">
+          <div>
+            <div style="font-weight:800" id="selCustName"></div>
+            <div class="muted" id="selCustMeta"></div>
+          </div>
+          <div class="muted" id="selCustWater"></div>
+        </div>
+      </div>
+
+      <div class="form_row">
+        <label>Quantity</label>
+        <input id="orderQty" type="number" min="1" max="100" value="1" />
+      </div>
+
+      <div class="form_row">
+        <label>Assign rider optional</label>
+        <select id="orderRider">
+          <option value="">No rider</option>
+          <% if (typeof riders !== "undefined" && riders && riders.length) { %>
+            <% riders.forEach(function(r){ %>
+              <option value="<%= r.id %>"><%= r.name %> (<%= r.id %>)</option>
+            <% }) %>
+          <% } %>
+        </select>
+      </div>
+
+      <div id="genOrderMsg" class="msg"></div>
+
+      <div class="modal_actions">
+        <button type="button" id="createOrderBtn" class="btn_primary" disabled>Create order</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function(){
+    const modal = document.getElementById("generateOrderModal");
+    const openBtn = document.getElementById("btnGenOrder");
+    const closeBtn = document.getElementById("closeGenerateOrderBtn");
+    const input = document.getElementById("custSearchInput");
+    const results = document.getElementById("custSearchResults");
+
+    const selectedBox = document.getElementById("selectedCustomerBox");
+    const selName = document.getElementById("selCustName");
+    const selMeta = document.getElementById("selCustMeta");
+    const selWater = document.getElementById("selCustWater");
+
+    const qtyInput = document.getElementById("orderQty");
+    const riderSel = document.getElementById("orderRider");
+    const createBtn = document.getElementById("createOrderBtn");
+    const msg = document.getElementById("genOrderMsg");
+
+    let selectedCustomerId = "";
+    let timer = null;
+
+    function setMsg(text, ok){
+      msg.textContent = text || "";
+      msg.className = "msg " + (ok ? "msg_ok" : (text ? "msg_err" : ""));
+    }
+
+    function openModal(){
+      modal.classList.remove("hidden");
+      modal.setAttribute("aria-hidden", "false");
+      setMsg("", true);
+      input.value = "";
+      results.innerHTML = "";
+      results.classList.add("hidden");
+      selectedCustomerId = "";
+      selectedBox.classList.add("hidden");
+      createBtn.disabled = true;
+      qtyInput.value = 1;
+      riderSel.value = "";
+      setTimeout(()=> input.focus(), 50);
+    }
+
+    function closeModal(){
+      modal.classList.add("hidden");
+      modal.setAttribute("aria-hidden", "true");
+    }
+
+    function escClose(e){
+      if(e.key === "Escape") closeModal();
+    }
+
+    function clickOutside(e){
+      if(e.target === modal) closeModal();
+    }
+
+    openBtn && openBtn.addEventListener("click", openModal);
+    closeBtn && closeBtn.addEventListener("click", closeModal);
+    document.addEventListener("keydown", escClose);
+    modal.addEventListener("click", clickOutside);
+
+    async function runSearch(){
+      const q = (input.value || "").trim();
+      if(!q){
+        results.innerHTML = "";
+        results.classList.add("hidden");
+        setMsg("", true);
+        return;
+      }
+
+      setMsg("Searching...", true);
+
+      try{
+        const res = await fetch("/api/admin/customers/search?q=" + encodeURIComponent(q), {
+          credentials: "same-origin"
+        });
+        const data = await res.json();
+
+        if(!data || !data.ok){
+          setMsg("Search failed", false);
+          results.innerHTML = "";
+          results.classList.add("hidden");
+          return;
+        }
+
+        const list = data.customers || [];
+        if(!list.length){
+          setMsg("No customer found", false);
+          results.innerHTML = "";
+          results.classList.add("hidden");
+          return;
+        }
+
+        setMsg("", true);
+        results.classList.remove("hidden");
+        results.innerHTML = "";
+
+        list.forEach(c => {
+          const div = document.createElement("div");
+          div.className = "result_item";
+          const water = (c.water_name || "").toString();
+          const unit = Number(c.unit_price || 0);
+          const listPrice = Number(c.list_price || 0);
+
+          div.innerHTML =
+            "<div style='font-weight:800'>" + (c.name || "") + " (ID " + (c.id || "") + ")</div>" +
+            "<div class='muted'>" +
+              (c.phone ? ("Phone " + c.phone + "   ") : "") +
+              (c.area ? ("Area " + c.area) : "") +
+            "</div>" +
+            "<div class='muted'>" +
+              (water ? ("Water " + water + "   ") : "") +
+              ("Unit " + unit + "   ") +
+              (listPrice ? ("List " + listPrice) : "") +
+            "</div>";
+
+          div.addEventListener("click", function(){
+            selectedCustomerId = String(c.id || "");
+            selName.textContent = (c.name || "") + " (ID " + (c.id || "") + ")";
+            selMeta.textContent = (c.phone ? ("Phone " + c.phone + "   ") : "") + (c.area ? ("Area " + c.area) : "");
+            selWater.textContent = (c.water_name ? ("Water " + c.water_name + "   ") : "") + "Unit " + Number(c.unit_price || 0);
+            selectedBox.classList.remove("hidden");
+            results.classList.add("hidden");
+            createBtn.disabled = !selectedCustomerId;
+            setMsg("Customer selected", true);
+          });
+
+          results.appendChild(div);
+        });
+
+      }catch(err){
+        setMsg("Search error", false);
+        results.innerHTML = "";
+        results.classList.add("hidden");
+      }
+    }
+
+    input.addEventListener("input", function(){
+      clearTimeout(timer);
+      timer = setTimeout(runSearch, 250);
+    });
+
+    createBtn.addEventListener("click", async function(){
+      const cid = String(selectedCustomerId || "").trim();
+      if(!cid){
+        setMsg("Customer select karo", false);
+        return;
+      }
+
+      let qty = Number(qtyInput.value || 1);
+      if(!qty || qty < 1) qty = 1;
+      if(qty > 100) qty = 100;
+
+      const riderId = String(riderSel.value || "").trim();
+
+      setMsg("Creating order...", true);
+      createBtn.disabled = true;
+
+      try{
+        const res = await fetch("/api/admin/orders/generate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          credentials: "same-origin",
+          body: JSON.stringify({
+            customer_id: cid,
+            quantity: qty,
+            quantity_requested: qty,
+            rider_id: riderId
+          })
+        });
+
+        const data = await res.json();
+
+        if(!data || !data.ok){
+          setMsg((data && data.msg) ? data.msg : "Order create failed", false);
+          createBtn.disabled = false;
+          return;
+        }
+
+        setMsg("Order created. Reloading...", true);
+        setTimeout(()=> window.location.reload(), 450);
+
+      }catch(err){
+        setMsg("Order create error", false);
+        createBtn.disabled = false;
+      }
+    });
+
+  })();
+</script>
+
+<%- include("_footer") %>

@@ -1,0 +1,45 @@
+<%- include("_header", { title: "Rider Login", appName, logoUrl, user }) %>
+
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-6">
+    <div class="card cardsoft p-4">
+      <div class="d-flex align-items-center justify-content-between mb-3">
+        <div>
+          <div class="h4 mb-1">Rider login</div>
+          <div class="smallmuted">Enter your rider ID</div>
+        </div>
+        <div class="d-flex gap-2">
+          <a class="btn btn-outline-dark btnround" href="/login/customer">Customer</a>
+          <a class="btn btn-outline-dark btnround" href="/login/admin">Admin</a>
+        </div>
+      </div>
+
+      <% if (msg) { %>
+        <div class="alert alert-warning"><%= msg %></div>
+      <% } %>
+
+      <form method="post" action="/login/rider" class="row g-3" autocomplete="off">
+        <div class="col-12">
+          <label class="form-label">Rider ID</label>
+          <input name="id" class="form-control" placeholder="Example R001" autocomplete="off" required>
+<div class="col-12">
+  <label class="form-label">Password</label>
+  <input
+    type="password"
+    name="password"
+    class="form-control"
+    placeholder="Enter password"
+    autocomplete="off"
+    required
+  >
+</div>
+        </div>
+        <div class="col-12">
+          <button class="btn btn-primary btnround px-4">Open rider dashboard</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+
+<%- include("_footer") %> 

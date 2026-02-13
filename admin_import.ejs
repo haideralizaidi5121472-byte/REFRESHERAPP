@@ -1,0 +1,99 @@
+<%- include("_header", { title: "Import Excel", appName, logoUrl, user }) %>
+
+<%
+  const wt = (typeof waterTypes !== "undefined" && Array.isArray(waterTypes)) ? waterTypes : [];
+  const rowsImported = (typeof imported !== "undefined" && Array.isArray(imported)) ? imported : [];
+%>
+
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-8">
+    <div class="card cardsoft p-4">
+      <div class="d-flex align-items-center justify-content-between flex-wrap gap-2">
+        <div>
+          <div class="h5 mb-1">Import customers from Excel</div>
+          <div class="smallmuted">Upload xlsx, xls, csv. IDs will be generated automatically.</div>
+        </div>
+
+        <div class="d-flex gap-2 flex-wrap">
+          <a class="btn btn-outline-dark btnround" href="/admin/customers">Back</a>
+          <a class="btn btn-outline-primary btnround" href="/admin/customers/download">Download customers</a>
+        </div>
+      </div>
+
+      <% if (msg) { %>
+        <div class="alert alert-info mt-3"><%= msg %></div>
+      <% } %>
+
+      <div class="smallmuted mt-2">
+        Supported columns are
+        <div>
+          CodeNo, Name, MobileNo, Address, location, Balance, OpeningBalance, OpeningBottle, BottlesBalance, Area
+        </div>
+      </div>
+
+      <form method="post" action="/admin/import/customers" enctype="multipart/form-data" class="row g-3 mt-2">
+        <div class="col-12">
+          <label class="form-label">File</label>
+          <input class="form-control" type="file" name="file" accept=".xlsx,.xls,.csv,.txt" required>
+          <div class="smallmuted mt-1">Tip: aapka sample file tab separated hota hai, system usko bhi read kar lega</div>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Fallback water type</label>
+
+          <% if (wt.length) { %>
+            <select class="form-select" name="water_type_id">
+              <% wt.forEach(w => { %>
+                <option value="<%= w.id %>"><%= w.name %></option>
+              <% }) %>
+            </select>
+          <% } else { %>
+            <input type="hidden" name="water_type_id" value="1">
+            <div class="alert alert-warning mt-2 mb-0">
+              Water types load nahi huay, fallback default use hoga
+            </div>
+          <% } %>
+        </div>
+
+        <div class="col-12">
+          <button class="btn btn-primary btnround w-100">Import</button>
+        </div>
+      </form>
+
+      <% if (rowsImported.length) { %>
+        <hr class="my-3">
+        <div class="h6">Imported result</div>
+        <div class="table-responsive">
+          <table class="table table-sm">
+            <thead>
+              <tr>
+                <th>New ID</th>
+                <th>Name</th>
+                <th>Phone</th>
+                <th>Water</th>
+                <th>Unit price</th>
+              </tr>
+            </thead>
+            <tbody>
+              <% rowsImported.forEach(x => { %>
+                <tr>
+                  <td class="fw-semibold"><%= x.id %></td>
+                  <td><%= x.name %></td>
+                  <td class="smallmuted"><%= x.phone %></td>
+                  <td class="smallmuted"><%= x.water %></td>
+                  <td><%= x.unitPrice %></td>
+                </tr>
+              <% }) %>
+            </tbody>
+          </table>
+        </div>
+      <% } %>
+
+      <div class="smallmuted mt-3">
+        Note: Default password 5121 aur ID generation ka rule server.js me set hota hai
+      </div>
+    </div>
+  </div>
+</div>
+
+<%- include("_footer") %>

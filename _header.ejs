@@ -1,0 +1,162 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width,initial-scale=1"/>
+
+  <% const pageTitle = (typeof title !== 'undefined' && title) ? title : (appName || 'Dashboard'); %>
+  <title><%= pageTitle %> | <%= appName || '' %></title>
+
+  <meta name="theme-color" content="#ffffff"/>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+  <link href="/style.css" rel="stylesheet">
+  <link rel="icon" href="<%= logoUrl || '/favicon.ico' %>">
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-light bg-white border-bottom">
+  <div class="container py-2">
+
+    <%
+      const roleRaw = (user && user.role) ? String(user.role) : '';
+      const role = roleRaw.toLowerCase().trim();
+
+      const isAdminLike = (role === 'admin' || role === 'owner');
+      const isSalesLike = (role === 'sales' || role === 'sales_admin');
+
+      const homeHref = isAdminLike ? '/admin'
+        : isSalesLike ? '/sales_admin/report'
+        : role === 'rider' ? '/rider'
+        : role === 'customer' ? '/customer'
+        : '/';
+
+      const uname = (user && user.name) ? user.name : '';
+    %>
+
+    <a class="navbar-brand d-flex align-items-center gap-2 text-decoration-none" href="<%= homeHref %>">
+      <div class="brandbar">
+        <img src="<%= logoUrl || '' %>" alt="Refresher H2o logo" onerror="this.style.display='none'">
+        <div>
+          <div class="fw-bold"><%= appName || '' %></div>
+          <div class="smallmuted">Water delivery dashboard</div>
+        </div>
+      </div>
+    </a>
+
+    <button class="navbar-toggler" type="button" data-bs-toggle="collapse" data-bs-target="#topNav" aria-controls="topNav" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
+    </button>
+
+    <div class="collapse navbar-collapse" id="topNav">
+
+      <% if (isAdminLike) { %>
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0 gap-lg-1">
+
+          <li class="nav-item">
+            <a class="nav-link rvh-nav" href="/admin" data-match="/admin">Dashboard</a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link rvh-nav" href="/admin/orders" data-match="/admin/orders">Orders</a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link rvh-nav" href="/admin/customers" data-match="/admin/customers">Customers</a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link rvh-nav" href="/admin/riders" data-match="/admin/riders">Riders</a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link rvh-nav" href="/admin/expenses" data-match="/admin/expenses">Expenses</a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link rvh-nav" href="/admin/udhaar" data-match="/admin/udhaar">Udhaar</a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link rvh-nav" href="/admin/pending_jazzcash" data-match="/admin/pending_jazzcash">Pending JazzCash</a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link rvh-nav" href="/admin/import" data-match="/admin/import">Import Excel</a>
+          </li>
+
+          <li class="nav-item">
+            <a class="nav-link rvh-nav" href="/admin/compare" data-match="/admin/compare">Sales Report</a>
+          </li>
+
+        </ul>
+      <% } %>
+
+      <% if (isSalesLike) { %>
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0 gap-lg-1">
+          <li class="nav-item">
+            <a class="nav-link rvh-nav" href="/sales_admin/report" data-match="/sales_admin/report">Dashboard</a>
+          </li>
+        </ul>
+      <% } %>
+
+      <% if (role === 'customer') { %>
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item">
+            <a class="nav-link rvh-nav" href="/customer" data-match="/customer">Dashboard</a>
+          </li>
+        </ul>
+      <% } %>
+
+      <% if (role === 'rider') { %>
+        <ul class="navbar-nav me-auto mb-2 mb-lg-0">
+          <li class="nav-item">
+            <a class="nav-link rvh-nav" href="/rider" data-match="/rider">Dashboard</a>
+          </li>
+        </ul>
+      <% } %>
+
+      <div class="ms-auto d-flex align-items-center gap-3">
+        <% if (user) { %>
+          <span class="badgepill">Logged in: <%= role %> <%= uname %></span>
+          <a class="btn btn-outline-dark btnround" href="/logout">Logout</a>
+        <% } %>
+      </div>
+
+    </div>
+  </div>
+</nav>
+
+<script>
+  (function () {
+    try {
+      var p = window.location.pathname || "";
+      var links = document.querySelectorAll(".rvh-nav");
+      var best = null;
+      var bestLen = 0;
+
+      links.forEach(function (a) {
+        var m = a.getAttribute("data-match") || "";
+        if (!m) return;
+
+        if (m === "/admin") {
+          if (p === "/admin" || p === "/admin/" || p === "/admin/dashboard" || p === "/admin/dashboard/") {
+            best = a;
+            bestLen = 999;
+          }
+          return;
+        }
+
+        if (p === m || p.indexOf(m + "/") === 0) {
+          if (m.length > bestLen) {
+            best = a;
+            bestLen = m.length;
+          }
+        }
+      });
+
+      if (best) best.classList.add("active");
+    } catch (e) {}
+  })();
+</script>
+
+<main class="container my-4">

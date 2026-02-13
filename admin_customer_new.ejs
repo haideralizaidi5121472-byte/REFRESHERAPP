@@ -1,0 +1,182 @@
+<%- include("_header", { title: "New customer", appName, logoUrl, user }) %>
+
+<%
+  const safeNum = (v) => Number(v || 0) || 0;
+
+  const wtypes = (waterTypes || []).map(w => ({
+    id: w.id,
+    name: String(w.name || ""),
+    list_price: safeNum(w.list_price)
+  }));
+
+  const findListById = (id) => {
+    const x = wtypes.find(a => String(a.id) === String(id));
+    return x ? safeNum(x.list_price) : 0;
+  };
+%>
+
+<div class="row justify-content-center">
+  <div class="col-12 col-lg-9">
+    <div class="card cardsoft p-3 p-md-4">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-2">
+        <div>
+          <div class="h5 mb-1">Create customer</div>
+          <div class="smallmuted">Same fields as Excel import so later import matches easily</div>
+        </div>
+        <a class="btn btn-outline-dark btnround" href="/admin/customers">Back</a>
+      </div>
+
+      <% if (msg) { %>
+        <div class="alert alert-warning mt-3"><%= msg %></div>
+      <% } %>
+
+      <form method="post" action="/admin/customers/new" class="row g-3 mt-1">
+
+        <div class="col-12 col-md-4">
+          <label class="form-label">CodeNo</label>
+          <input class="form-control" name="CodeNo" placeholder="Leave empty for auto id">
+          <div class="form-text">If empty system will generate id</div>
+        </div>
+
+        <div class="col-12 col-md-8">
+          <label class="form-label">Name</label>
+          <input class="form-control" name="Name" required>
+        </div>
+
+        <div class="col-12 col-md-4">
+          <label class="form-label">MobileNo</label>
+          <input class="form-control" name="MobileNo" inputmode="tel" placeholder="03xxxxxxxxx">
+        </div>
+
+        <div class="col-12 col-md-4">
+          <label class="form-label">Area</label>
+          <input class="form-control" name="Area" placeholder="Example Gulshan DHA Model Town">
+        </div>
+
+        <div class="col-12 col-md-4">
+          <label class="form-label">Customer PIN</label>
+          <input class="form-control" name="pin" inputmode="numeric" placeholder="Example 12345">
+          <div class="form-text">Customer login will use id plus pin</div>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Address</label>
+          <input class="form-control" name="Address" placeholder="House street block etc">
+        </div>
+
+        <div class="col-12">
+          <label class="form-label">Location</label>
+          <input class="form-control" name="location" placeholder="Google map link">
+          <div class="form-text">Paste google map url if available</div>
+        </div>
+
+        <div class="col-12 col-md-6">
+          <label class="form-label">Water type</label>
+          <select class="form-select" name="water_type_id" id="wtSel" required>
+            <% wtypes.forEach(w => { %>
+              <option value="<%= w.id %>"><%= w.name %> (list <%= w.list_price %>)</option>
+            <% }) %>
+          </select>
+          <div class="form-text">List price auto used if unit price is empty</div>
+        </div>
+
+        <div class="col-12 col-md-6">
+          <label class="form-label">Customer price per bottle</label>
+          <input class="form-control" name="unit_price" id="priceInp" type="number" min="0" placeholder="Leave empty to use list price">
+          <div class="form-text">Set customer rate if different from list price</div>
+        </div>
+
+        <div class="col-12">
+          <div class="p-3 rounded border bg-light">
+            <div class="d-flex flex-wrap justify-content-between gap-2">
+              <div class="small text-muted">Selected list price</div>
+              <div class="fw-semibold" id="listShow">0</div>
+            </div>
+            <div class="d-flex flex-wrap justify-content-between gap-2 mt-1">
+              <div class="small text-muted">Customer unit price</div>
+              <div class="fw-semibold" id="unitShow">0</div>
+            </div>
+            <div class="d-flex flex-wrap justify-content-between gap-2 mt-1">
+              <div class="small text-muted">Discount per bottle</div>
+              <div class="fw-semibold text-success" id="discShow">0</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12">
+          <div class="card border-0 bg-white">
+            <div class="row g-2">
+              <div class="col-12 col-md-4">
+                <label class="form-label">OpeningBalance</label>
+                <input class="form-control" name="OpeningBalance" type="number" min="0" value="0">
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label">OpeningBottle</label>
+                <input class="form-control" name="OpeningBottle" type="number" min="0" value="0">
+              </div>
+              <div class="col-12 col-md-4">
+                <label class="form-label">BottlesBalance</label>
+                <input class="form-control" name="BottlesBalance" type="number" min="0" value="0">
+              </div>
+              <div class="col-12">
+                <div class="form-text">These match your Excel sheet columns</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 d-grid d-md-flex gap-2">
+          <button class="btn btn-primary btnround px-4">Create customer</button>
+          <a class="btn btn-outline-dark btnround px-4" href="/admin/customers">Cancel</a>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+  (function () {
+    try {
+      var wtypes = <%- JSON.stringify(wtypes || []) %>;
+      var wtSel = document.getElementById("wtSel");
+      var priceInp = document.getElementById("priceInp");
+
+      var listShow = document.getElementById("listShow");
+      var unitShow = document.getElementById("unitShow");
+      var discShow = document.getElementById("discShow");
+
+      function listPriceNow() {
+        var id = wtSel && wtSel.value ? String(wtSel.value) : "";
+        var row = (wtypes || []).find(function (x) { return String(x.id) === id; });
+        return row ? Number(row.list_price || 0) : 0;
+      }
+
+      function unitPriceNow() {
+        var v = Number(priceInp && priceInp.value ? priceInp.value : 0) || 0;
+        if (!v || v <= 0) return listPriceNow();
+        return v;
+      }
+
+      function render() {
+        var lp = listPriceNow();
+        var up = unitPriceNow();
+        var disc = Math.max(0, (lp - up));
+
+        if (listShow) listShow.textContent = lp;
+        if (unitShow) unitShow.textContent = up;
+        if (discShow) discShow.textContent = disc;
+
+        if (priceInp && (!priceInp.value || String(priceInp.value).trim() === "")) {
+          priceInp.placeholder = "List price is " + lp;
+        }
+      }
+
+      if (wtSel) wtSel.addEventListener("change", render);
+      if (priceInp) priceInp.addEventListener("input", render);
+      render();
+    } catch (e) {}
+  })();
+</script>
+
+<%- include("_footer") %>

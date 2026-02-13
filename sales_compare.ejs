@@ -1,0 +1,631 @@
+<%- include('_header') %>
+
+<%
+  const fmtMoney = (v) => {
+    const n = Number(v || 0);
+    return isNaN(n) ? 0 : n;
+  };
+
+  const safeArr = (v) => Array.isArray(v) ? v : [];
+
+  const selectedDate = (typeof date !== "undefined" && date) ? String(date) : "";
+  const compareDate = (typeof compare !== "undefined" && compare) ? String(compare) : "";
+
+  const selectedRiderId =
+    (typeof rider_id !== "undefined" && rider_id) ? String(rider_id) :
+    ((typeof riderId !== "undefined" && riderId) ? String(riderId) : "");
+
+  const s = (typeof stats !== "undefined" && stats) ? stats : {};
+  const daily = safeArr(typeof dailyOrders !== "undefined" ? dailyOrders : []);
+  const msum = (typeof monthlySummary !== "undefined" && monthlySummary) ? monthlySummary : {};
+  const mrows = safeArr(typeof monthlyBreakdown !== "undefined" ? monthlyBreakdown : []);
+
+  const riders = safeArr(
+    (typeof salesRiders !== "undefined" ? salesRiders : null) ||
+    (typeof s.salesRiders !== "undefined" ? s.salesRiders : null) ||
+    (typeof s.riders !== "undefined" ? s.riders : null)
+  );
+
+  const employees = safeArr(
+    (typeof salesEmployees !== "undefined" ? salesEmployees : null) ||
+    (typeof s.salesEmployees !== "undefined" ? s.salesEmployees : null) ||
+    (typeof s.employees !== "undefined" ? s.employees : null)
+  );
+
+  const clientsCount = fmtMoney(s.clientsCount);
+  const ordersCount = fmtMoney(s.ordersCount);
+  const bottlesDelivered = fmtMoney(s.bottlesDelivered);
+
+  const totalSales = fmtMoney(s.totalSales);
+  const totalExpenses = fmtMoney(s.totalExpenses);
+  const cashReceived = fmtMoney(s.cashReceived);
+  const jazzReceived = fmtMoney(s.jazzReceived);
+  const udhaar = fmtMoney(s.udhaar);
+  const pendingJazz = fmtMoney(s.pendingJazz);
+
+  const profitAccrual = (typeof s.profitAccrual !== "undefined")
+    ? fmtMoney(s.profitAccrual)
+    : (totalSales - totalExpenses);
+
+  const riderAdvances = fmtMoney(s.riderAdvances);
+  const employeeAdvances = fmtMoney(s.employeeAdvances);
+  const riderReturns = fmtMoney(s.riderReturns);
+
+  const baseNetAfterExpenses = (cashReceived + jazzReceived) - totalExpenses;
+  const adjustedNetAfterExpenses = baseNetAfterExpenses - riderAdvances - employeeAdvances + riderReturns;
+
+  const netAfterExpenses = (typeof s.netAfterExpenses !== "undefined")
+    ? fmtMoney(s.netAfterExpenses)
+    : adjustedNetAfterExpenses;
+
+  const todayISO = new Date().toISOString().slice(0, 10);
+
+  let dailyTotals = { delivered: 0, returned: 0, bill: 0, received: 0, due: 0 };
+
+  daily.forEach((o) => {
+    dailyTotals.delivered += fmtMoney(o.delivered_qty);
+    dailyTotals.returned += fmtMoney(o.empty_qty);
+    dailyTotals.bill += fmtMoney(o.bill_amount);
+    dailyTotals.received += fmtMoney(o.payment_amount);
+    dailyTotals.due += fmtMoney(o.due_amount);
+  });
+
+  const monthLabel = (typeof msum.monthLabel !== "undefined" && msum.monthLabel) ? String(msum.monthLabel) : "";
+
+  const sumRow = (arr, getter) => arr.reduce((acc, x) => acc + fmtMoney(getter(x)), 0);
+
+  const riderTotal = sumRow(riders, (x) => x.total || x.salary || x.amount || x.expense || x.payable || x.net);
+  const riderPaid  = sumRow(riders, (x) => x.paid || x.paid_amount || x.paidAmount || x.received || x.payment || x.cashPaid);
+  const riderDue   = sumRow(riders, (x) => x.due || x.due_amount || x.dueAmount || x.remaining || x.balance);
+
+  const empTotal = sumRow(employees, (x) => x.total || x.salary || x.amount || x.expense || x.payable || x.net);
+  const empPaid  = sumRow(employees, (x) => x.paid || x.paid_amount || x.paidAmount || x.received || x.payment || x.cashPaid);
+  const empDue   = sumRow(employees, (x) => x.due || x.due_amount || x.dueAmount || x.remaining || x.balance);
+
+  const hasAdminLinks = (typeof showAdminLinks !== "undefined") ? !!showAdminLinks : true;
+
+  const monthlySales = fmtMoney(msum.sales);
+  const monthlyExpenses = fmtMoney(msum.expenses);
+  const monthlyCash = fmtMoney(msum.cash);
+  const monthlyJazz = fmtMoney(msum.jazz);
+  const monthlyUdhaar = fmtMoney(msum.udhaar);
+
+  const monthlyBaseNet = (monthlyCash + monthlyJazz) - monthlyExpenses;
+  const monthlyAdjustedNet = monthlyBaseNet - fmtMoney(msum.riderAdvances) - fmtMoney(msum.employeeAdvances) + fmtMoney(msum.riderReturns);
+
+  const monthlyNetAfterExpenses = (typeof msum.netAfterExpenses !== "undefined")
+    ? fmtMoney(msum.netAfterExpenses)
+    : (typeof msum.net !== "undefined" ? fmtMoney(msum.net) : monthlyAdjustedNet);
+%>
+
+<div class="container mt-3">
+
+  <div class="d-flex align-items-start justify-content-between flex-wrap gap-2 mb-2">
+    <div>
+      <h4 class="m-0">Sales Report</h4>
+      <div class="text-muted small">Daily and monthly accounts</div>
+      <div class="text-muted small">Note: 4 AM to 4 AM cycle server me set hoga</div>
+    </div>
+
+    <div class="d-flex align-items-center gap-2 flex-wrap">
+      <a class="btn btn-sm btn-outline-primary" href="/dashboard">Dashboard</a>
+      <a class="btn btn-sm btn-outline-secondary" href="/expenses">Expenses</a>
+      <a class="btn btn-sm btn-outline-secondary" href="/udhaar">Udhaar list</a>
+      <a class="btn btn-sm btn-outline-warning" href="/pending-jazzcash">Pending JazzCash</a>
+    </div>
+  </div>
+
+  <form class="card mb-3" action="/sales-compare" method="GET">
+    <div class="card-body">
+      <div class="row g-2 align-items-end">
+        <div class="col-12 col-md-3">
+          <label class="form-label mb-1">Select date</label>
+          <input type="date" name="date" class="form-control" value="<%= selectedDate || todayISO %>">
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label mb-1">Compare with date</label>
+          <input type="date" name="compare" class="form-control" value="<%= compareDate %>">
+        </div>
+
+        <div class="col-12 col-md-3">
+          <label class="form-label mb-1">Rider</label>
+          <select class="form-select" name="rider_id">
+            <option value="">All riders</option>
+            <% riders.forEach((r) => {
+              const rid = String(r.id || r.rider_id || r.riderId || r.rid || "");
+              const rname = r.name || r.rider_name || r.full_name || ("Rider " + rid);
+              const sel = (selectedRiderId && rid && selectedRiderId === rid) ? "selected" : "";
+            %>
+              <option value="<%= rid %>" <%= sel %>><%= rname %></option>
+            <% }) %>
+          </select>
+        </div>
+
+        <div class="col-12 col-md-3 d-flex gap-2">
+          <button type="submit" class="btn btn-primary w-100">
+            <%= selectedRiderId ? "Open" : "View report" %>
+          </button>
+
+          <a class="btn btn-outline-dark w-100"
+             href="/sales-compare?date=<%= todayISO %><%= selectedRiderId ? ('&rider_id=' + encodeURIComponent(selectedRiderId)) : '' %>">
+            Today
+          </a>
+
+          <% if(selectedRiderId) { %>
+            <a class="btn btn-outline-success w-100" href="/orders/new?rider_id=<%= encodeURIComponent(selectedRiderId) %>">
+              Add
+            </a>
+          <% } %>
+        </div>
+      </div>
+    </div>
+  </form>
+
+  <div class="row g-2 mb-2">
+    <div class="col-12 col-md-4">
+      <div class="card shadow-sm">
+        <div class="card-body py-3">
+          <div class="text-muted small">Clients</div>
+          <div class="fs-4 fw-bold"><%= clientsCount %></div>
+          <div class="text-muted small">Total registered</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-4">
+      <div class="card shadow-sm">
+        <div class="card-body py-3">
+          <div class="text-muted small">Orders</div>
+          <div class="fs-4 fw-bold"><%= ordersCount %></div>
+          <div class="text-muted small">Selected date orders</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-4">
+      <div class="card shadow-sm">
+        <div class="card-body py-3">
+          <div class="text-muted small">Bottles delivered</div>
+          <div class="fs-4 fw-bold"><%= bottlesDelivered %></div>
+          <div class="text-muted small">Selected date delivered</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="row g-2 mb-3">
+    <div class="col-12 col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Total sales</div>
+          <div class="fs-5 fw-bold"><%= totalSales %> <span class="small text-muted">PKR</span></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Total expenses</div>
+          <div class="fs-5 fw-bold"><%= totalExpenses %> <span class="small text-muted">PKR</span></div>
+          <div class="text-muted small">Expenses page se add hoti hain</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Cash received</div>
+          <div class="fs-5 fw-bold"><%= cashReceived %> <span class="small text-muted">PKR</span></div>
+          <div class="text-muted small">Cash basis received</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">JazzCash received</div>
+          <div class="fs-5 fw-bold"><%= jazzReceived %> <span class="small text-muted">PKR</span></div>
+          <div class="text-muted small">Only verified JazzCash</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Udhaar</div>
+          <div class="fs-5 fw-bold"><%= udhaar %> <span class="small text-muted">PKR</span></div>
+          <div class="text-muted small">Bill minus received</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Pending JazzCash</div>
+          <div class="fs-5 fw-bold"><%= pendingJazz %> <span class="small text-muted">PKR</span></div>
+          <div class="text-muted small">Orders pending</div>
+          <a class="btn btn-sm btn-outline-warning mt-2" href="/pending-jazzcash">Open pending list</a>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Profit accrual</div>
+          <div class="fs-5 fw-bold"><%= profitAccrual %> <span class="small text-muted">PKR</span></div>
+          <div class="text-muted small">Sales minus expenses</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-3">
+      <div class="card shadow-sm">
+        <div class="card-body">
+          <div class="text-muted small">Net after expenses</div>
+          <div class="fs-5 fw-bold"><%= netAfterExpenses %> <span class="small text-muted">PKR</span></div>
+          <div class="text-muted small">(Cash plus verified Jazz) minus expenses plus staff adjust</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <div>
+          <h6 class="m-0">Riders and Employees</h6>
+          <div class="text-muted small">Payments and udhaar update admin se hoga</div>
+        </div>
+        <div class="d-flex gap-2 flex-wrap">
+          <a class="btn btn-sm btn-outline-secondary" href="/riders">Riders</a>
+          <a class="btn btn-sm btn-outline-secondary" href="/employees">Employees</a>
+          <% if(hasAdminLinks) { %>
+            <a class="btn btn-sm btn-outline-dark" href="/admin/riders">Admin riders</a>
+            <a class="btn btn-sm btn-outline-dark" href="/admin/employees">Admin employees</a>
+          <% } %>
+        </div>
+      </div>
+
+      <div class="row g-2 mt-2">
+        <div class="col-12 col-md-6">
+          <div class="card border-0 bg-light">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">Riders</div>
+                <div class="text-muted small"><%= riders.length %> rows</div>
+              </div>
+
+              <div class="row g-2 mt-2">
+                <div class="col-4">
+                  <div class="text-muted small">Total</div>
+                  <div class="fw-bold"><%= riderTotal %></div>
+                </div>
+                <div class="col-4">
+                  <div class="text-muted small">Paid</div>
+                  <div class="fw-bold"><%= riderPaid %></div>
+                </div>
+                <div class="col-4">
+                  <div class="text-muted small">Due</div>
+                  <div class="fw-bold <%= riderDue > 0 ? 'text-danger' : '' %>"><%= riderDue %></div>
+                </div>
+              </div>
+
+              <div class="table-responsive mt-2">
+                <table class="table table-sm align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Name</th>
+                      <th style="width:110px">Total</th>
+                      <th style="width:110px">Paid</th>
+                      <th style="width:110px">Due</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% if(riders.length === 0) { %>
+                      <tr>
+                        <td colspan="4" class="text-center text-muted py-2">No rider data</td>
+                      </tr>
+                    <% } %>
+
+                    <% riders.forEach((r) => {
+                      const nm = r.name || r.rider_name || r.rider || r.full_name || "";
+                      const t  = fmtMoney(r.total || r.salary || r.amount || r.expense || r.payable || r.net);
+                      const p  = fmtMoney(r.paid || r.paid_amount || r.paidAmount || r.received || r.payment || r.cashPaid);
+                      const d  = fmtMoney(r.due || r.due_amount || r.dueAmount || r.remaining || r.balance);
+                    %>
+                      <tr>
+                        <td class="fw-semibold"><%= nm %></td>
+                        <td><%= t %></td>
+                        <td><%= p %></td>
+                        <td class="<%= d > 0 ? 'text-danger' : '' %>"><%= d %></td>
+                      </tr>
+                    <% }) %>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="text-muted small mt-2">Update rider payments admin riders page se</div>
+            </div>
+          </div>
+        </div>
+
+        <div class="col-12 col-md-6">
+          <div class="card border-0 bg-light">
+            <div class="card-body">
+              <div class="d-flex justify-content-between align-items-center">
+                <div class="fw-semibold">Employees</div>
+                <div class="text-muted small"><%= employees.length %> rows</div>
+              </div>
+
+              <div class="row g-2 mt-2">
+                <div class="col-4">
+                  <div class="text-muted small">Total</div>
+                  <div class="fw-bold"><%= empTotal %></div>
+                </div>
+                <div class="col-4">
+                  <div class="text-muted small">Paid</div>
+                  <div class="fw-bold"><%= empPaid %></div>
+                </div>
+                <div class="col-4">
+                  <div class="text-muted small">Due</div>
+                  <div class="fw-bold <%= empDue > 0 ? 'text-danger' : '' %>"><%= empDue %></div>
+                </div>
+              </div>
+
+              <div class="table-responsive mt-2">
+                <table class="table table-sm align-middle mb-0">
+                  <thead class="table-light">
+                    <tr>
+                      <th>Name</th>
+                      <th style="width:110px">Total</th>
+                      <th style="width:110px">Paid</th>
+                      <th style="width:110px">Due</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <% if(employees.length === 0) { %>
+                      <tr>
+                        <td colspan="4" class="text-center text-muted py-2">No employee data</td>
+                      </tr>
+                    <% } %>
+
+                    <% employees.forEach((e) => {
+                      const nm = e.name || e.employee_name || e.employee || e.full_name || "";
+                      const t  = fmtMoney(e.total || e.salary || e.amount || e.expense || e.payable || e.net);
+                      const p  = fmtMoney(e.paid || e.paid_amount || e.paidAmount || e.received || e.payment || e.cashPaid);
+                      const d  = fmtMoney(e.due || e.due_amount || e.dueAmount || e.remaining || e.balance);
+                    %>
+                      <tr>
+                        <td class="fw-semibold"><%= nm %></td>
+                        <td><%= t %></td>
+                        <td><%= p %></td>
+                        <td class="<%= d > 0 ? 'text-danger' : '' %>"><%= d %></td>
+                      </tr>
+                    <% }) %>
+                  </tbody>
+                </table>
+              </div>
+
+              <div class="text-muted small mt-2">Update employee payments admin employees page se</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="text-muted small mt-2">
+        Agar admin pages nahi hain to showAdminLinks false bhej dein ya admin buttons hata dein
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h6 class="m-0">Daily orders</h6>
+        <div class="text-muted small">Total <%= daily.length %></div>
+      </div>
+
+      <div class="table-responsive mt-2">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width:70px">ID</th>
+              <th>Customer</th>
+              <th style="width:90px">Delivered</th>
+              <th style="width:90px">Returned</th>
+              <th style="width:90px">Bill</th>
+              <th style="width:90px">Method</th>
+              <th style="width:90px">Received</th>
+              <th style="width:90px">Due</th>
+              <th style="width:110px">Jazz status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if(daily.length === 0) { %>
+              <tr>
+                <td colspan="9" class="text-center text-muted py-3">No data for selected date</td>
+              </tr>
+            <% } %>
+
+            <% daily.forEach((o) => {
+              const id = (typeof o.id !== "undefined") ? o.id : "";
+              const name = (o.customer_name || "");
+              const addr = (o.address || "");
+              const delivered = fmtMoney(o.delivered_qty);
+              const returned = fmtMoney(o.empty_qty);
+              const bill = fmtMoney(o.bill_amount);
+              const method = (o.payment_method || "");
+              const received = fmtMoney(o.payment_amount);
+              const due = fmtMoney(o.due_amount);
+              const jazzStatus = (o.jazz_status || method || "");
+            %>
+              <tr>
+                <td><%= id %></td>
+                <td>
+                  <div class="fw-semibold"><%= name %></div>
+                  <% if(addr) { %><div class="text-muted small"><%= addr %></div><% } %>
+                </td>
+                <td><%= delivered %></td>
+                <td><%= returned %></td>
+                <td><%= bill %></td>
+                <td><%= method %></td>
+                <td><%= received %></td>
+                <td class="<%= due > 0 ? 'text-danger' : '' %>"><%= due %></td>
+                <td><%= jazzStatus %></td>
+              </tr>
+            <% }) %>
+
+            <% if(daily.length > 0) { %>
+              <tr class="table-light fw-semibold">
+                <td colspan="2">Totals</td>
+                <td><%= dailyTotals.delivered %></td>
+                <td><%= dailyTotals.returned %></td>
+                <td><%= dailyTotals.bill %></td>
+                <td></td>
+                <td><%= dailyTotals.received %></td>
+                <td><%= dailyTotals.due %></td>
+                <td></td>
+              </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-3">
+    <div class="card-body">
+      <div class="d-flex align-items-center gap-2 flex-wrap">
+        <h6 class="m-0">Monthly summary</h6>
+        <% if(monthLabel) { %><span class="text-muted small"><%= monthLabel %></span><% } %>
+      </div>
+
+      <div class="row g-2 mt-2">
+        <div class="col-6 col-md">
+          <div class="text-muted small">Sales</div>
+          <div class="fw-bold"><%= monthlySales %></div>
+        </div>
+        <div class="col-6 col-md">
+          <div class="text-muted small">Expenses</div>
+          <div class="fw-bold"><%= monthlyExpenses %></div>
+        </div>
+        <div class="col-6 col-md">
+          <div class="text-muted small">Cash</div>
+          <div class="fw-bold"><%= monthlyCash %></div>
+        </div>
+        <div class="col-6 col-md">
+          <div class="text-muted small">Jazz</div>
+          <div class="fw-bold"><%= monthlyJazz %></div>
+        </div>
+        <div class="col-6 col-md">
+          <div class="text-muted small">Udhaar</div>
+          <div class="fw-bold"><%= monthlyUdhaar %></div>
+        </div>
+        <div class="col-6 col-md">
+          <div class="text-muted small">Net after expenses</div>
+          <div class="fw-bold"><%= monthlyNetAfterExpenses %></div>
+        </div>
+      </div>
+
+      <div class="text-muted small mt-2">
+        Net after expenses means (cash plus verified jazz) minus expenses plus staff adjust
+      </div>
+    </div>
+  </div>
+
+  <div class="card shadow-sm mb-4">
+    <div class="card-body">
+      <div class="d-flex justify-content-between align-items-center flex-wrap gap-2">
+        <h6 class="m-0">Month daily breakdown</h6>
+        <div class="text-muted small"><%= mrows.length %> days</div>
+      </div>
+
+      <div class="table-responsive mt-2">
+        <table class="table table-sm align-middle">
+          <thead class="table-light">
+            <tr>
+              <th style="width:120px">Day</th>
+              <th style="width:100px">Sales</th>
+              <th style="width:110px">Expenses</th>
+              <th style="width:100px">Cash</th>
+              <th style="width:100px">Jazz</th>
+              <th style="width:110px">Udhaar</th>
+              <th style="width:160px">Net after expenses</th>
+            </tr>
+          </thead>
+          <tbody>
+            <% if(mrows.length === 0) { %>
+              <tr>
+                <td colspan="7" class="text-center text-muted py-3">No monthly breakdown data</td>
+              </tr>
+            <% } %>
+
+            <% mrows.forEach((r) => {
+              const day = r.day || "";
+              const sales = fmtMoney(r.sales);
+              const expenses = fmtMoney(r.expenses);
+              const cash = fmtMoney(r.cash);
+              const jazz = fmtMoney(r.jazz);
+              const udh = fmtMoney(r.udhaar);
+
+              const baseNet = (cash + jazz) - expenses;
+              const adjNet = baseNet - fmtMoney(r.riderAdvances) - fmtMoney(r.employeeAdvances) + fmtMoney(r.riderReturns);
+
+              const net = (typeof r.netAfterExpenses !== "undefined")
+                ? fmtMoney(r.netAfterExpenses)
+                : (typeof r.net !== "undefined" ? fmtMoney(r.net) : adjNet);
+            %>
+              <tr>
+                <td><%= day %></td>
+                <td><%= sales %></td>
+                <td><%= expenses %></td>
+                <td><%= cash %></td>
+                <td><%= jazz %></td>
+                <td><%= udh %></td>
+                <td class="<%= net < 0 ? 'text-danger' : '' %>"><%= net %></td>
+              </tr>
+            <% }) %>
+          </tbody>
+        </table>
+      </div>
+
+      <div class="text-center text-muted small mt-3">
+        Refresher H2o · Water delivery dashboard
+      </div>
+    </div>
+  </div>
+
+  <% if (lifeTime) { %>
+    <h3 style="margin-top:18px;">Life time summary</h3>
+
+    <table class="table" style="width:100%;border-collapse:collapse;">
+      <tr><td>Total sales</td><td><%= lifeTime.sales %></td></tr>
+      <tr><td>Cash received</td><td><%= lifeTime.cash %></td></tr>
+      <tr><td>Jazz received</td><td><%= lifeTime.jazz %></td></tr>
+
+      <tr><td>Total expenses</td><td><%= lifeTime.expenses %></td></tr>
+      <tr><td>Expenses cash</td><td><%= lifeTime.expensesCash %></td></tr>
+      <tr><td>Expenses jazz</td><td><%= lifeTime.expensesJazz %></td></tr>
+
+      <tr><td>Rider advances</td><td><%= lifeTime.riderAdvances %></td></tr>
+      <tr><td>Rider returns</td><td><%= lifeTime.riderReturns %></td></tr>
+      <tr><td>Employee advances</td><td><%= lifeTime.employeeAdvances %></td></tr>
+      <tr><td>Employee salaries paid</td><td><%= lifeTime.employeeSalaries %></td></tr>
+
+      <tr><td>Net after expenses</td><td><%= lifeTime.netAfterExpenses %></td></tr>
+      <tr><td>Net after expenses base</td><td><%= lifeTime.netAfterExpensesBase %></td></tr>
+
+      <tr><td>Total udhaar</td><td><%= lifeTime.udhaar %></td></tr>
+    </table>
+  <% } %>
+
+</div>
+
+<%- include('_footer') %>
