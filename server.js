@@ -69,12 +69,7 @@ app.use(
   session({
    store: new SQLiteStore({ db: "sessions.sqlite", dir: process.cwd() }),
 
-  const SESSION_SECRET = String(process.env.SESSION_SECRET || "").trim();
-if (!SESSION_SECRET && process.env.NODE_ENV === "production") {
-  throw new Error("SESSION_SECRET missing in production");
-}
-
-    resave: false,
+     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 1000 * 60 * 60 * 24 * 30 },
   })
