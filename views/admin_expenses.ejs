@@ -41,7 +41,7 @@
     <div class="text-muted small">Today <strong><%= today %></strong></div>
   </div>
   <div class="d-flex gap-2 flex-wrap">
-    <a class="btn btn-outline-dark btn-sm" href="/admin">Back to dashboard</a>
+   <a class="btn btn-outline-dark btn-sm" href="<%= (isSalesPortal ? '/sales_admin' : '/admin') %>">Back to dashboard</a>
   </div>
 </div>
 
@@ -131,7 +131,7 @@
 <div class="card mb-3">
   <div class="card-header fw-semibold">Add expense</div>
   <div class="card-body">
-    <form method="post" action="/admin/expenses/add">
+<form method="post" action="<%= (isSalesPortal ? '/sales_admin/expenses/add' : '/admin/expenses/add') %>">
       <div class="row g-2">
         <div class="col-12 col-md-2">
           <label class="form-label mb-1">Date</label>
