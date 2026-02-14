@@ -12,20 +12,6 @@ console.log("NOW ISO (UTC)", new Date().toISOString());
 console.log("APP_TZ_OFFSET_HOURS", APP_TZ_OFFSET_HOURS);
 const path = require("path");
 const fs = require("fs");
-function logLine(msg) {
-  try {
-    fs.appendFileSync(path.join(process.cwd(), "runtime.log"), msg + "\n");
-  } catch (e) {}
-}
-
-process.on("uncaughtException", (err) => {
-  logLine("uncaughtException " + (err && err.stack ? err.stack : String(err)));
-});
-
-process.on("unhandledRejection", (err) => {
-  logLine("unhandledRejection " + (err && err.stack ? err.stack : String(err)));
-});
-
 const express = require("express");
 const session = require("express-session");
 const SQLiteStore = require("connect-sqlite3")(session);
@@ -39,8 +25,6 @@ const { initDb, nextCustomerId, getOutstanding } = require("./db");
 const { requireRole, safeInt, todayYmd, ymdOffset, normalizePkPhone } = require("./utils");
 
 const app = express();
-logLine("app booted " + new Date().toISOString());
-
 
 /* =========================
    NEW SETTINGS
@@ -51,12 +35,10 @@ const SALES_LOGIN_WINDOW_MINUTES = Number(process.env.SALES_LOGIN_WINDOW_MINUTES
 const SALES_ADMIN_CREDENTIALS = config.salesAdminCredentials || { username: "sales", password: "sales123" };
 /* ========================= */
 
-const uploadsDir = path.join(process.cwd(), "uploads");
-
+const uploadsDir = path.join(__dirname, "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
-const db = initDb(path.join(process.cwd(), "data.sqlite"));
-
+const db = initDb(path.join(__dirname, "data.sqlite"));
 
 app.set("view engine", "ejs");
 app.set("views", path.join(__dirname, "views"));
@@ -66,8 +48,7 @@ app.use(bodyParser.json());
 
 app.use(
   session({
-   store: new SQLiteStore({ db: "sessions.sqlite", dir: process.cwd() }),
-
+    store: new SQLiteStore({ db: "sessions.sqlite", dir: __dirname }),
     secret: "refresher_super_secret_key",
     resave: false,
     saveUninitialized: false,
@@ -4485,23 +4466,11 @@ app.get("/customer", requireRole("customer"), (req, res) => {
     { customer, recentOrders, ledger }
   );
 });
-app.get("/", (req, res) => {
-  res.redirect("/login/customer");
-});
 
-process.on("uncaughtException", (err) => {
-  console.error("uncaughtException:", err);
-});
-
-process.on("unhandledRejection", (err) => {
-  console.error("unhandledRejection:", err);
-});
-
-
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log("Server started"));
 /* 404 */
 app.use((req, res) => {
   res.status(404).send("Route not found");
 });
 
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log(`Server running on http://localhost:${port}`));    
