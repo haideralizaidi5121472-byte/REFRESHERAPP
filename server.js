@@ -4466,11 +4466,22 @@ app.get("/customer", requireRole("customer"), (req, res) => {
     { customer, recentOrders, ledger }
   );
 });
+app.get("/", (req, res) => {
+  res.redirect("/login/customer");
+});
 
+process.on("uncaughtException", (err) => {
+  console.error("uncaughtException:", err);
+});
+
+process.on("unhandledRejection", (err) => {
+  console.error("unhandledRejection:", err);
+});
 /* 404 */
 app.use((req, res) => {
   res.status(404).send("Route not found");
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Server running on http://localhost:${port}`));    
+app.listen(port, () => console.log("Server started"));
+
