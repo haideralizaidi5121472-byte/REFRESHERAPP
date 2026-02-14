@@ -2,14 +2,15 @@ const { DateTime } = require("luxon");
 const APP_ZONE = process.env.APP_ZONE || "Asia/Karachi";
 const BUSINESS_DAY_START_HOUR = Number(process.env.BUSINESS_DAY_START_HOUR || 4) || 4;
 /* IMPORTANT: used in computeMonthly SQLite timezone shifting */
-const APP_TZ_OFFSET_HOURS = Math.round(DateTime.now().setZone(APP_ZONE).offset / 60);
-console.log("APP_ZONE", APP_ZONE);
+function getAppTzOffsetHours() {
+  return Math.trunc(DateTime.now().setZone(APP_ZONE).offset / 60);
+}console.log("APP_ZONE", APP_ZONE);
 console.log(
   "NOW (Local)",
   DateTime.now().setZone(APP_ZONE).toFormat("ccc LLL dd yyyy HH:mm:ss 'GMT'ZZ")
 );
 console.log("NOW ISO (UTC)", new Date().toISOString());
-console.log("APP_TZ_OFFSET_HOURS", APP_TZ_OFFSET_HOURS);
+console.log("APP_TZ_OFFSET_HOURS", getAppTzOffsetHours());
 const path = require("path");
 const fs = require("fs");
 const express = require("express");
@@ -49,7 +50,7 @@ app.use(bodyParser.json());
 app.use(
   session({
     store: new SQLiteStore({ db: "sessions.sqlite", dir: __dirname }),
-    secret: "refresher_super_secret_key",
+secret: (process.env.SESSION_SECRET || "refresher_super_secret_key"),
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 1000 * 60 * 60 * 24 * 30 },
@@ -379,10 +380,8 @@ function requireSales(req, res, next) {
    Is function ko apne code me requireSalesAdmin wali jagah replace kar do
 */
 function requireSalesAdmin(req, res, next) {
-  if (req.session && (req.session.sales_admin || req.session.sales_user)) return next();
-  try {
-    req.session.sales_admin_redirect = req.originalUrl || "/sales_admin/report";
-  } catch (e) {}
+  if (req.session && req.session.sales_admin) return next();
+  try { req.session.sales_admin_redirect = req.originalUrl || "/sales_admin/report"; } catch (e) {}
   return res.redirect("/sales_admin/login");
 }
 /* owner like session */
@@ -666,14 +665,12 @@ function markDeliveredAdminCore(oid, overrides = {}) {
   const emptyReturned = Number(overrides.empty_returned_qty || overrides.emptyReturned || o.empty_returned_qty || 0) || 0;
 
   const totalBill = totalFromOrder(o, billQty);
-
-  const paymentReceivedFlag =
-    overrides.payment_received !== undefined && overrides.payment_received !== null
-      ? Number(overrides.payment_received) ? 1 : 0
-      : method === "jazzcash"
-        ? 0
-        : 1;
-
+const paymentReceivedFlag =
+  overrides.payment_received !== undefined && overrides.payment_received !== null
+    ? Number(overrides.payment_received) ? 1 : 0
+    : method === "jazzcash"
+      ? 0
+      : (Number(amountReceived || 0) > 0 ? 1 : 0);
   db.transaction(() => {
     db.prepare(
       `
@@ -1457,7 +1454,7 @@ app.post("/complete-order/:id", requireRole("rider"), (req, res) => {
   const billQty = deliveredQty > 0 ? deliveredQty : Number(o.quantity_requested || 0);
   const totalBill = Number(o.unit_price || 0) * billQty;
 
-  const paymentReceivedFlag = method === "jazzcash" ? 0 : 1;
+  const paymentReceivedFlag = method === "jazzcash" ? 0 : (Number(amountReceived || 0) > 0 ? 1 : 0);
 
   db.transaction(() => {
     db.prepare(
@@ -2444,6 +2441,54 @@ function addExpenseHandler(req, res) {
 }
 
 app.post("/admin/expenses/add", requireStaff, addExpenseHandler);
+function addExpenseHandlerSales(req, res) {
+  const bd = businessDayInfo();
+  const expDate = (pickBody(req, ["exp_date", "date"], bd.ymd) || bd.ymd).toString().trim();
+  const category = pickBody(req, ["category", "type"], "").toString().trim();
+  const amount = Number(pickBody(req, ["amount", "expense_amount", "cost"], 0)) || 0;
+
+  const methodRaw = (pickBody(req, ["method", "payment_method"], "cash") || "cash").toString().trim().toLowerCase();
+  const method = methodRaw === "jazzcash" ? "jazzcash" : "cash";
+
+  const staffId = pickBody(req, ["staff_id", "staff"], "").toString().trim();
+  const note = pickBody(req, ["note", "details", "desc", "description"], "").toString().trim();
+
+  if (!category || !amount) return res.redirect("/sales_admin/expenses?date=" + encodeURIComponent(expDate));
+
+  try {
+    db.prepare(
+      "INSERT INTO expenses (exp_date, category, amount, method, staff_id, note, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+    ).run(expDate, category, amount, method, staffId, note, nowIso());
+  } catch (e) {}
+
+  return res.redirect("/sales_admin/expenses?date=" + encodeURIComponent(expDate));
+}
+
+app.post("/sales_admin/expenses/add", requireSalesAdmin, addExpenseHandlerSales);
+
+app.post("/sales_admin/expenses/:id/update", requireSalesAdmin, (req, res) => {
+  const id = Number(req.params.id || 0);
+  const category = String(req.body.category || "").trim();
+  const amount = Number(req.body.amount || 0);
+
+  const methodRaw = String(req.body.method || "cash").trim().toLowerCase();
+  const method = methodRaw === "jazzcash" ? "jazzcash" : "cash";
+
+  const note = String(req.body.note || "").trim();
+
+  const backDate = String(req.body.exp_date || req.body.date || req.query.date || "").trim();
+
+  if (!id || !category || amount <= 0) {
+    return res.redirect("/sales_admin/expenses" + (backDate ? "?date=" + encodeURIComponent(backDate) : ""));
+  }
+
+  try {
+    db.prepare("UPDATE expenses SET category=?, amount=?, method=?, note=? WHERE id=?")
+      .run(category, amount, method, note, id);
+  } catch (e) {}
+
+  return res.redirect("/sales_admin/expenses" + (backDate ? "?date=" + encodeURIComponent(backDate) : ""));
+});
 app.post("/admin/expenses/:id/update", requireStaff, (req, res) => {
   const id = Number(req.params.id || 0);
   const category = String(req.body.category || "").trim();
@@ -2536,18 +2581,18 @@ function buildOrderViewRow(o) {
     }
   }
 
-  return {
-    id: o.id,
-    customer_name: o.customer_name || "",
-    delivered_qty: Number(o.delivered_qty || 0),
-    empty_returned_qty: Number(o.empty_returned_qty || 0),
-    payment_method: method,
-    payment_received: receivedFlag ? 1 : 0,
+return {
+  id: o.id,
+  customer_name: o.customer_name || "",
+  delivered_qty: Number(qty || 0),
+  empty_returned_qty: Number(o.empty_returned_qty || 0),
+  payment_method: method,
+  payment_received: receivedFlag ? 1 : 0,
 
-    bill_total: billTotal,
-    received_total: receivedTotal,
-    due_total: dueTotal,
-  };
+  bill_total: billTotal,
+  received_total: receivedTotal,
+  due_total: dueTotal,
+};
 }
 
 function manualUdhaarReceivedForDay(ymd) {
@@ -2844,48 +2889,58 @@ function computeMonthly(infoDay) {
   const monthInfo = businessMonthInfoForYmd(infoDay.ymd);
 
   const ordAgg = db.prepare(
-    `
-    SELECT
-      date(datetime(delivered_at, '+' || ? || ' hours', '-' || ? || ' hours')) as day,
-      COALESCE(SUM(unit_price * CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END),0) as sales,
-      COALESCE(SUM(CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END),0) as bottles,
-      COALESCE(SUM(COALESCE(empty_returned_qty,0)),0) as returned,
-      COALESCE(SUM(CASE WHEN payment_method='cash' AND COALESCE(payment_received,1)=1 THEN payment_amount ELSE 0 END),0) as cash,
-      COALESCE(SUM(CASE WHEN payment_method='jazzcash' AND COALESCE(payment_received,0)=1 THEN payment_amount ELSE 0 END),0) as jazz,
-      COALESCE(SUM(
-        CASE 
-          WHEN COALESCE(payment_received,0)=1 THEN
-            CASE
-              WHEN ((unit_price * CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END) - COALESCE(payment_amount,0)) > 0
-              THEN ((unit_price * CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END) - COALESCE(payment_amount,0))
-              ELSE 0
-            END
-          ELSE
-            CASE
-              WHEN LOWER(COALESCE(payment_method,''))='jazzcash' THEN
-                CASE
-                  WHEN COALESCE(payment_amount,0) > 0 THEN COALESCE(payment_amount,0)
-                  ELSE (unit_price * CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END)
-                END
-              ELSE
-                CASE
-                  WHEN ((unit_price * CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END) - COALESCE(payment_amount,0)) > 0
-                  THEN ((unit_price * CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END) - COALESCE(payment_amount,0))
-                  ELSE 0
-                END
-            END
-        END
-      ),0) as udhaar
-    FROM orders
-    WHERE status='delivered'
-      AND delivered_at >= ?
-      AND delivered_at < ?
-    GROUP BY day
-    ORDER BY day DESC
   `
-  ).all(APP_TZ_OFFSET_HOURS, BUSINESS_DAY_START_HOUR, monthInfo.startIso, monthInfo.endIso);
-
-  const expAgg = db.prepare(
+  WITH local AS (
+  SELECT
+    o.*,
+    datetime(
+      replace(replace(o.delivered_at,'T',' '),'Z',''),
+      printf('%+d hours', ?)
+    ) AS dt_local
+  FROM orders o
+  WHERE o.status='delivered'
+    AND o.delivered_at >= ?
+    AND o.delivered_at < ?
+)  SELECT
+    CASE
+      WHEN CAST(strftime('%H', dt_local) AS INTEGER) < ?
+        THEN date(dt_local, '-1 day')
+      ELSE date(dt_local)
+    END AS day,
+    COALESCE(SUM(unit_price * CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END),0) as sales,
+    COALESCE(SUM(CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END),0) as bottles,
+    COALESCE(SUM(COALESCE(empty_returned_qty,0)),0) as returned,
+    COALESCE(SUM(CASE WHEN payment_method='cash' AND COALESCE(payment_received,1)=1 THEN payment_amount ELSE 0 END),0) as cash,
+    COALESCE(SUM(CASE WHEN payment_method='jazzcash' AND COALESCE(payment_received,0)=1 THEN payment_amount ELSE 0 END),0) as jazz,
+    COALESCE(SUM(
+      CASE 
+        WHEN COALESCE(payment_received,0)=1 THEN
+          CASE
+            WHEN ((unit_price * CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END) - COALESCE(payment_amount,0)) > 0
+            THEN ((unit_price * CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END) - COALESCE(payment_amount,0))
+            ELSE 0
+          END
+        ELSE
+          CASE
+            WHEN LOWER(COALESCE(payment_method,''))='jazzcash' THEN
+              CASE
+                WHEN COALESCE(payment_amount,0) > 0 THEN COALESCE(payment_amount,0)
+                ELSE (unit_price * CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END)
+              END
+            ELSE
+              CASE
+                WHEN ((unit_price * CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END) - COALESCE(payment_amount,0)) > 0
+                THEN ((unit_price * CASE WHEN COALESCE(delivered_qty,0) > 0 THEN delivered_qty ELSE quantity_requested END) - COALESCE(payment_amount,0))
+                ELSE 0
+              END
+          END
+      END
+    ),0) as udhaar
+  FROM local
+  GROUP BY day
+  ORDER BY day DESC
+`
+).all(getAppTzOffsetHours(), monthInfo.startIso, monthInfo.endIso, BUSINESS_DAY_START_HOUR);  const expAgg = db.prepare(
     `
     SELECT
       exp_date as day,
@@ -3325,8 +3380,63 @@ lifeTime,
 } // yahan function close ho gaya
 
 /* Sales admin links jo EJS me aate hain unke liye redirects */
-app.get("/sales_admin/expenses", requireSalesAdmin, (req, res) => res.redirect("/admin/expenses"));
-app.get("/sales_admin/udhaar", requireSalesAdmin, (req, res) => res.redirect("/admin/udhaar"));
+function salesAdminExpensesPage(req, res) {
+  const bd = businessDayInfo();
+
+  const incoming = String(req.query.date || req.query.ymd || "").trim();
+  const selectedYmd = incoming ? businessDayInfoForYmd(incoming).ymd : bd.ymd;
+
+  let expenses = [];
+  try {
+    expenses = db
+      .prepare("SELECT * FROM expenses WHERE exp_date=? ORDER BY id DESC LIMIT 5000")
+      .all(selectedYmd);
+  } catch (e) {
+    expenses = [];
+  }
+
+  const totalRow = db.prepare(`
+    SELECT
+      COALESCE(SUM(amount),0) as total,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(method,''))='cash' THEN amount ELSE 0 END),0) as cash,
+      COALESCE(SUM(CASE WHEN LOWER(COALESCE(method,''))='jazzcash' THEN amount ELSE 0 END),0) as jazz
+    FROM expenses
+    WHERE exp_date=?
+  `).get(selectedYmd);
+
+  const totalAll = db.prepare("SELECT COALESCE(SUM(amount),0) as s FROM expenses").get().s || 0;
+
+  const payload = {
+    ...viewData(req),
+    expenses,
+    today: selectedYmd,
+    selectedDate: selectedYmd,
+    isSalesPortal: true,
+
+    totalExpensesToday: Number(totalRow && totalRow.total ? totalRow.total : 0),
+    expCashToday: Number(totalRow && totalRow.cash ? totalRow.cash : 0),
+    expJazzToday: Number(totalRow && totalRow.jazz ? totalRow.jazz : 0),
+
+    totalExpensesAll: Number(totalAll || 0),
+    totalExpenses: Number(totalAll || 0),
+
+    msg: null,
+  };
+
+  return renderAny(
+    res,
+    ["sales_admin_expenses", "admin_expenses", "daily_expense", "expenses"],
+    payload,
+    {
+      ok: true,
+      selectedDate: selectedYmd,
+      totalExpensesToday: payload.totalExpensesToday,
+      expenses,
+    }
+  );
+}
+
+app.get("/sales_admin/expenses", requireSalesAdmin, salesAdminExpensesPage);app.get("/sales_admin/udhaar", requireSalesAdmin, (req, res) => res.redirect("/admin/udhaar"));
 app.get("/sales_admin/pending_jazzcash", requireSalesAdmin, (req, res) => res.redirect("/admin/pending_jazzcash"));
 
 /* Sales report main routes */
@@ -4473,4 +4583,4 @@ app.use((req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Server running on http://localhost:${port}`));    
+app.listen(port, () => console.log(`Server running on http://localhost:${port}`));     
