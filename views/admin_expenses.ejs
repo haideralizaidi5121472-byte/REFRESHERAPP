@@ -1,24 +1,31 @@
-<%- include('_header', { title: "Expenses", appName, logoUrl, user }) %>
-
+<%- include('_header', { 
+  title: "Expenses", 
+  appName: (typeof appName !== "undefined" ? appName : ""),
+  logoUrl: (typeof logoUrl !== "undefined" ? logoUrl : ""),
+  user: (typeof user !== "undefined" ? user : null)
+}) %><%
+  const isSalesPortalSafe = (typeof isSalesPortal !== "undefined" && isSalesPortal) ? true : false;
+%>
+<%
+  const todaySafe = (typeof today !== "undefined" && today) ? today : "";
+  const currencySafe = (typeof currency !== "undefined" && currency) ? currency : "";
+  const expensesSafe = (typeof expenses !== "undefined" && Array.isArray(expenses)) ? expenses : [];
+const statsSafe = (typeof stats !== "undefined" && stats) ? stats : {};%>
 <%
   const safeNum = (v) => Number(v || 0) || 0;
 
-  const salesToday = safeNum(stats && stats.salesToday);
-  const cashInHand = safeNum(stats && stats.cashInHand);
-  const jazzInHand = safeNum(stats && stats.totalJazz);
-
-  const expTodayTotal = safeNum(stats && stats.totalExpenses);
-  const expCashToday = safeNum(stats && stats.expCashToday);
-  const expJazzToday = safeNum(stats && stats.expJazzToday);
-
-  const cashNet = (stats && stats.cashNet !== undefined && stats.cashNet !== null)
-    ? safeNum(stats.cashNet)
-    : Math.max(0, cashInHand - expCashToday);
-
-  const jazzNet = (stats && stats.jazzNet !== undefined && stats.jazzNet !== null)
-    ? safeNum(stats.jazzNet)
-    : Math.max(0, jazzInHand - expJazzToday);
-
+  const salesToday = safeNum(statsSafe.salesToday);
+const cashInHand = safeNum(statsSafe.cashInHand);
+const jazzInHand = safeNum(statsSafe.totalJazz);
+  const expTodayTotal = safeNum(statsSafe.totalExpenses);
+  const expCashToday = safeNum(statsSafe.expCashToday);
+const expJazzToday = safeNum(statsSafe.expJazzToday);
+const cashNet = (statsSafe.cashNet !== undefined && statsSafe.cashNet !== null)
+  ? safeNum(statsSafe.cashNet)
+  : Math.max(0, cashInHand - expCashToday);
+const jazzNet = (statsSafe.jazzNet !== undefined && statsSafe.jazzNet !== null)
+  ? safeNum(statsSafe.jazzNet)
+  : Math.max(0, jazzInHand - expJazzToday);
   const netProfit = salesToday - expTodayTotal;
 
   const allExp = safeNum(
@@ -38,11 +45,10 @@
 <div class="d-flex flex-wrap align-items-center justify-content-between gap-2 mb-3">
   <div>
     <h1 class="h4 m-0">Expenses</h1>
-    <div class="text-muted small">Today <strong><%= today %></strong></div>
+    <div class="text-muted small">Today <strong><%= todaySafe %></strong></div>
   </div>
   <div class="d-flex gap-2 flex-wrap">
-   <a class="btn btn-outline-dark btn-sm" href="<%= (isSalesPortal ? '/sales_admin' : '/admin') %>">Back to dashboard</a>
-  </div>
+   <a class="btn btn-outline-dark btn-sm" href="<%= (isSalesPortalSafe ? '/sales_admin' : '/admin') %>">Back to dashboard</a>  </div>
 </div>
 
 <div class="row g-3 mb-3">
@@ -50,7 +56,7 @@
     <div class="card h-100">
       <div class="card-body">
         <div class="text-muted small">Today sales</div>
-        <div class="fs-3 fw-bold"><%= salesToday %> <span class="fs-6"><%= currency %></span></div>
+        <div class="fs-3 fw-bold"><%= salesToday %> <span class="fs-6"><%= currencySafe %></span></div>
         <div class="text-muted small">Net profit depends on expenses</div>
       </div>
     </div>
@@ -60,9 +66,9 @@
     <div class="card h-100 border-success">
       <div class="card-body">
         <div class="text-muted small">Cash collected</div>
-        <div class="fs-3 fw-bold text-success"><%= cashInHand %> <span class="fs-6 text-muted"><%= currency %></span></div>
-        <div class="small text-muted">Cash expense <strong><%= expCashToday %></strong> <%= currency %></div>
-        <div class="small">Net cash <strong><%= cashNet %></strong> <%= currency %></div>
+        <div class="fs-3 fw-bold text-success"><%= cashInHand %> <span class="fs-6 text-muted"><%= currencySafe %></span></div>
+        <div class="small text-muted">Cash expense <strong><%= expCashToday %></strong> <%= currencySafe %></div>
+        <div class="small">Net cash <strong><%= cashNet %></strong> <%= currencySafe %></div>
       </div>
     </div>
   </div>
@@ -71,9 +77,9 @@
     <div class="card h-100 border-info">
       <div class="card-body">
         <div class="text-muted small">JazzCash collected</div>
-        <div class="fs-3 fw-bold text-info"><%= jazzInHand %> <span class="fs-6 text-muted"><%= currency %></span></div>
-        <div class="small text-muted">Jazz expense <strong><%= expJazzToday %></strong> <%= currency %></div>
-        <div class="small">Net jazz <strong><%= jazzNet %></strong> <%= currency %></div>
+        <div class="fs-3 fw-bold text-info"><%= jazzInHand %> <span class="fs-6 text-muted"><%= currencySafe %></span></div>
+        <div class="small text-muted">Jazz expense <strong><%= expJazzToday %></strong> <%= currencySafe %></div>
+        <div class="small">Net jazz <strong><%= jazzNet %></strong> <%= currencySafe %></div>
       </div>
     </div>
   </div>
@@ -82,8 +88,8 @@
     <div class="card h-100 border-warning">
       <div class="card-body">
         <div class="text-muted small">Today expenses</div>
-        <div class="fs-3 fw-bold text-warning"><%= todayExpSum %> <span class="fs-6 text-muted"><%= currency %></span></div>
-        <div class="small text-muted">All time expenses <strong><%= allExp %></strong> <%= currency %></div>
+        <div class="fs-3 fw-bold text-warning"><%= todayExpSum %> <span class="fs-6 text-muted"><%= currencySafe %></span></div>
+        <div class="small text-muted">All time expenses <strong><%= allExp %></strong> <%= currencySafe %></div>
       </div>
     </div>
   </div>
@@ -96,7 +102,7 @@
         <div class="fw-semibold">Today net</div>
         <div class="text-muted small">Net profit equals sales minus expenses</div>
       </div>
-      <div class="fs-4 fw-bold"><%= netProfit %> <span class="fs-6 text-muted"><%= currency %></span></div>
+      <div class="fs-4 fw-bold"><%= netProfit %> <span class="fs-6 text-muted"><%= currencySafe %></span></div>
     </div>
 
     <div class="table-responsive mt-3">
@@ -104,23 +110,23 @@
         <tbody>
           <tr>
             <td class="text-muted">Today sales</td>
-            <td class="fw-semibold"><%= salesToday %> <%= currency %></td>
+            <td class="fw-semibold"><%= salesToday %> <%= currencySafe %></td>
           </tr>
           <tr>
             <td class="text-muted">Today expenses</td>
-            <td class="fw-semibold"><%= expTodayTotal %> <%= currency %></td>
+            <td class="fw-semibold"><%= expTodayTotal %> <%= currencySafe %></td>
           </tr>
           <tr>
             <td class="text-muted">Net profit</td>
-            <td class="fw-semibold"><%= netProfit %> <%= currency %></td>
+            <td class="fw-semibold"><%= netProfit %> <%= currencySafe %></td>
           </tr>
           <tr>
             <td class="text-muted">Net cash after cash expenses</td>
-            <td class="fw-semibold"><%= cashNet %> <%= currency %></td>
+<td class="fw-semibold"><%= cashNet %> <%= currencySafe %></td>
           </tr>
           <tr>
             <td class="text-muted">Net jazz after jazz expenses</td>
-            <td class="fw-semibold"><%= jazzNet %> <%= currency %></td>
+            <td class="fw-semibold"><%= jazzNet %> <%= currencySafe %></td>
           </tr>
         </tbody>
       </table>
@@ -131,11 +137,10 @@
 <div class="card mb-3">
   <div class="card-header fw-semibold">Add expense</div>
   <div class="card-body">
-<form method="post" action="<%= (isSalesPortal ? '/sales_admin/expenses/add' : '/admin/expenses/add') %>">
-      <div class="row g-2">
+<form method="post" action="<%= (isSalesPortalSafe ? '/sales_admin/expenses/add' : '/admin/expenses/add') %>">      <div class="row g-2">
         <div class="col-12 col-md-2">
           <label class="form-label mb-1">Date</label>
-          <input type="date" name="exp_date" value="<%= today %>" class="form-control">
+          <input type="date" name="exp_date" value="<%= todaySafe %>" class="form-control">
         </div>
 
         <div class="col-12 col-md-3">
@@ -194,8 +199,8 @@
         </tr>
       </thead>
       <tbody>
-        <% if (expenses && expenses.length) { %>
-          <% expenses.forEach(function(e){ %>
+        <% if (expensesSafe && expensesSafe.length) { %>
+          <% expensesSafe.forEach (function(e){ %>
             <tr>
               <td class="text-nowrap"><%= e.id %></td>
               <td class="text-nowrap"><%= e.exp_date %></td>
