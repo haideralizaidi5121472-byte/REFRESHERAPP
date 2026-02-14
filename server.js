@@ -57,6 +57,12 @@ const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 const db = initDb(path.join(process.cwd(), "data.sqlite"));
+const SESSION_SECRET = String(process.env.SESSION_SECRET || config.sessionSecret || "dev_secret_change_me").trim();
+
+if (!SESSION_SECRET && process.env.NODE_ENV === "production") {
+  throw new Error("SESSION_SECRET missing in production");
+}
+
 
 
 app.set("view engine", "ejs");
@@ -67,13 +73,14 @@ app.use(bodyParser.json());
 
 app.use(
   session({
-   store: new SQLiteStore({ db: "sessions.sqlite", dir: process.cwd() }),
-
-     resave: false,
+    store: new SQLiteStore({ db: "sessions.sqlite", dir: process.cwd() }),
+    secret: SESSION_SECRET,
+    resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 1000 * 60 * 60 * 24 * 30 },
   })
 );
+
 
 const upload = multer({ dest: uploadsDir });
 
