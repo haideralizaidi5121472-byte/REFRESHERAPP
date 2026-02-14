@@ -113,7 +113,23 @@
       <form method="post" action="/customer/order" class="row g-2 align-items-end" id="orderForm">
         <div class="col-12 col-md-6">
           <label class="form-label">Quantity</label>
-          <input id="qtyInput" name="quantity" type="number" min="1" max="100" step="1" inputmode="numeric" value="1" class="form-control">
+          <div class="qtyStepper">
+  <button type="button" class="qtyBtn" id="qtyMinus" aria-label="Decrease quantity">−</button>
+
+  <input
+    id="qtyInput"
+    name="quantity"
+    type="number"
+    min="1"
+    max="100"
+    step="1"
+    inputmode="numeric"
+    value="1"
+    class="form-control qtyField"
+  >
+
+  <button type="button" class="qtyBtn" id="qtyPlus" aria-label="Increase quantity">+</button>
+</div>
           <div class="form-text">Max 100 bottles per order</div>
         </div>
         <div class="col-12 col-md-6 d-grid">
@@ -418,28 +434,59 @@
       var estSave = document.getElementById("estSave");
 
       function clampQty(q) {
-        var n = Number(q || 1) || 1;
-        if (n < 1) n = 1;
-        if (n > 100) n = 100;
-        return n;
-      }
+  var n = parseInt(q, 10);
+  if (!Number.isFinite(n)) n = 1;
+  if (n < 1) n = 1;
+  if (n > 100) n = 100;
+  return n;
+}
+function renderPreview() {
+  var raw = qtyInput ? String(qtyInput.value || "").trim() : "";
+  if (raw === "") {
+    if (estTotal) estTotal.textContent = (unitPrice * 1) + " <%= currency %>";
+    if (estListTotal) estListTotal.textContent = (listPrice * 1) + " <%= currency %>";
+    if (estSave) estSave.textContent = (discountBottle * 1) + " <%= currency %>";
+    return;
+  }
 
-      function render() {
-        var q = clampQty(qtyInput && qtyInput.value ? qtyInput.value : 1);
-        if (qtyInput) qtyInput.value = q;
+  var q = clampQty(raw);
 
-        var total = unitPrice * q;
-        var listTotal = listPrice * q;
-        var save = discountBottle * q;
+  var total = unitPrice * q;
+  var listTotal = listPrice * q;
+  var save = discountBottle * q;
 
-        if (estTotal) estTotal.textContent = total + " <%= currency %>";
-        if (estListTotal) estListTotal.textContent = listTotal + " <%= currency %>";
-        if (estSave) estSave.textContent = save + " <%= currency %>";
-      }
+  if (estTotal) estTotal.textContent = total + " <%= currency %>";
+  if (estListTotal) estListTotal.textContent = listTotal + " <%= currency %>";
+  if (estSave) estSave.textContent = save + " <%= currency %>";
+}
+var minusBtn = document.getElementById("qtyMinus");
+var plusBtn = document.getElementById("qtyPlus");
 
-      if (qtyInput) qtyInput.addEventListener("input", render);
-      render();
-    } catch (e) {}
+function setQty(n){
+  n = clampQty(n);
+  if (qtyInput) qtyInput.value = n;
+  renderPreview();
+}
+if (minusBtn) minusBtn.addEventListener("click", function(){
+  var n = clampQty(qtyInput && qtyInput.value ? qtyInput.value : 1);
+  setQty(n - 1);
+});
+
+if (plusBtn) plusBtn.addEventListener("click", function(){
+  var n = clampQty(qtyInput && qtyInput.value ? qtyInput.value : 1);
+  setQty(n + 1);
+});
+if (qtyInput) {
+  qtyInput.addEventListener("input", renderPreview);
+
+  qtyInput.addEventListener("blur", function(){
+    var raw = String(qtyInput.value || "").trim();
+    if (raw === "") qtyInput.value = "1";
+    else qtyInput.value = String(clampQty(raw));
+    renderPreview();
+  });
+}
+renderPreview();    } catch (e) {}
   })();
 </script>
 
@@ -457,5 +504,25 @@
     } catch (e) {}
   })();
 </script>
+<style>
+  .qtyStepper{
+    display:flex;
+    align-items:center;
+    gap:10px;
+  }
+  .qtyBtn{
+    width:44px;
+    height:44px;
+    border:1px solid #d1d5db;
+    background:#fff;
+    border-radius:10px;
+    font-size:22px;
+    line-height:1;
+  }
+  .qtyField{
+    text-align:center;
+    height:44px;
+  }
+</style>
 
 <%- include("_footer") %>
