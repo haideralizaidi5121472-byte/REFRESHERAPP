@@ -1,3 +1,4 @@
+require("dotenv").config();
 const { DateTime } = require("luxon");
 const APP_ZONE = process.env.APP_ZONE || "Asia/Karachi";
 const BUSINESS_DAY_START_HOUR = Number(process.env.BUSINESS_DAY_START_HOUR || 4) || 4;
@@ -68,7 +69,8 @@ app.use(
   session({
    store: new SQLiteStore({ db: "sessions.sqlite", dir: process.cwd() }),
 
-    secret: "refresher_super_secret_key",
+   secret: process.env.SESSION_SECRET || "refresher_super_secret_key",
+
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 1000 * 60 * 60 * 24 * 30 },
