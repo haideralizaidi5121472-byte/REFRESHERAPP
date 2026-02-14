@@ -4500,6 +4500,10 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (err) => {
   console.error("unhandledRejection:", err);
 });
+/* 404 */
+app.use((req, res) => {
+  res.status(404).send("Route not found");
+});
 
 
 const PORT = process.env.PORT || 3000;
@@ -4509,8 +4513,5 @@ app.listen(PORT, "0.0.0.0", () => {
 });
 
 
-/* 404 */
-app.use((req, res) => {
-  res.status(404).send("Route not found");
-});
+
 
