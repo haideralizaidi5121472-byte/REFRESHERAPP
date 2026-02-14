@@ -4498,8 +4498,12 @@ process.on("unhandledRejection", (err) => {
 });
 
 
-const port = process.env.PORT || 3000;
-app.listen(port, () => console.log("Server started"));
+const PORT = process.env.PORT || 3000;
+
+app.listen(PORT, "0.0.0.0", () => {
+  console.log("Server started on port " + PORT);
+});
+
 /* 404 */
 app.use((req, res) => {
   res.status(404).send("Route not found");
