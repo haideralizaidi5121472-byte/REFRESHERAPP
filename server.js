@@ -1,4 +1,3 @@
-require("dotenv").config();
 const { DateTime } = require("luxon");
 const APP_ZONE = process.env.APP_ZONE || "Asia/Karachi";
 const BUSINESS_DAY_START_HOUR = Number(process.env.BUSINESS_DAY_START_HOUR || 4) || 4;
@@ -57,12 +56,6 @@ const uploadsDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true });
 
 const db = initDb(path.join(process.cwd(), "data.sqlite"));
-const SESSION_SECRET = String(process.env.SESSION_SECRET || config.sessionSecret || "dev_secret_change_me").trim();
-
-if (!SESSION_SECRET && process.env.NODE_ENV === "production") {
-  throw new Error("SESSION_SECRET missing in production");
-}
-
 
 
 app.set("view engine", "ejs");
@@ -73,14 +66,14 @@ app.use(bodyParser.json());
 
 app.use(
   session({
-    store: new SQLiteStore({ db: "sessions.sqlite", dir: process.cwd() }),
-    secret: SESSION_SECRET,
+   store: new SQLiteStore({ db: "sessions.sqlite", dir: process.cwd() }),
+
+    secret: "refresher_super_secret_key",
     resave: false,
     saveUninitialized: false,
     cookie: { maxAge: 1000 * 60 * 60 * 24 * 30 },
   })
 );
-
 
 const upload = multer({ dest: uploadsDir });
 
@@ -1118,8 +1111,6 @@ const fromIso = from.toISOString();
     return [];
   }
 }
-app.get("/health", (req, res) => res.status(200).send("ok"));
-
 
 /* AUTH */
 app.get("/", (req, res) => {
@@ -4505,18 +4496,12 @@ process.on("uncaughtException", (err) => {
 process.on("unhandledRejection", (err) => {
   console.error("unhandledRejection:", err);
 });
+
+
+const port = process.env.PORT || 3000;
+app.listen(port, () => console.log("Server started"));
 /* 404 */
 app.use((req, res) => {
   res.status(404).send("Route not found");
 });
-
-
-const PORT = process.env.PORT || 3000;
-
-app.listen(PORT, "0.0.0.0", () => {
-  console.log("Server started on port " + PORT);
-});
-
-
-
 
