@@ -1113,6 +1113,8 @@ const fromIso = from.toISOString();
     return [];
   }
 }
+app.get("/health", (req, res) => res.status(200).send("ok"));
+
 
 /* AUTH */
 app.get("/", (req, res) => {
