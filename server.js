@@ -69,7 +69,10 @@ app.use(
   session({
    store: new SQLiteStore({ db: "sessions.sqlite", dir: process.cwd() }),
 
-   secret: process.env.SESSION_SECRET || "refresher_super_secret_key",
+  const SESSION_SECRET = String(process.env.SESSION_SECRET || "").trim();
+if (!SESSION_SECRET && process.env.NODE_ENV === "production") {
+  throw new Error("SESSION_SECRET missing in production");
+}
 
     resave: false,
     saveUninitialized: false,
