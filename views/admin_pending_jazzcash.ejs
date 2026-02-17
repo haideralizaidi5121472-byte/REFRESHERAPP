@@ -43,6 +43,21 @@
   </div>
 
   <hr class="my-3">
+<form class="row g-2 align-items-end" method="get" action="/admin/pending_jazzcash">
+  <div class="col-12 col-md-4">
+    <label class="form-label small m-0">From</label>
+    <input class="form-control form-control-sm" type="date" name="from" value="<%= (typeof from !== "undefined" && from) ? from : "" %>">
+  </div>
+
+  <div class="col-12 col-md-4">
+    <label class="form-label small m-0">To</label>
+    <input class="form-control form-control-sm" type="date" name="to" value="<%= (typeof to !== "undefined" && to) ? to : "" %>">
+  </div>
+
+  <div class="col-12 col-md-4 d-grid">
+    <button class="btn btn-sm btn-outline-primary btnround" type="submit">Filter</button>
+  </div>
+</form>
 
   <% if (!rows.length) { %>
     <div class="text-muted text-center py-4">
@@ -101,19 +116,40 @@
               </td>
 
               <td>
-                <form method="post" action="/admin/orders/<%= oid %>/verify_jazzcash" class="m-0">
-                  <div class="row g-2 align-items-end">
-                    <div class="col-12 col-md-6">
-                      <label class="form-label small m-0">Amount received</label>
-                      <input class="form-control form-control-sm" type="number" name="amount" min="1" value="<%= amt %>" required>
-                      <div class="small text-muted mt-1">Agar amount change ho to yahan edit kar sakte hain</div>
-                    </div>
-                    <div class="col-12 col-md-6 d-grid">
-                      <button class="btn btn-sm btn-outline-primary btnround" type="submit">Verify JazzCash</button>
-                      <a class="btn btn-sm btn-outline-dark btnround mt-2" href="/admin/orders/<%= oid %>/jazzcash_whatsapp">Open invoice msg</a>
-                    </div>
-                  </div>
-                </form>
+<form method="post" action="/admin/orders/<%= oid %>/verify_jazzcash" class="m-0 js-verify-form">
+  <div class="row g-2 align-items-end">
+    <div class="col-12 col-md-6">
+      <div class="row g-2">
+        <div class="col-6">
+          <label class="form-label small m-0">Mode</label>
+          <select class="form-select form-select-sm" name="mode" data-role="mode">
+            <option value="full" selected>Full</option>
+            <option value="partial">Partial</option>
+          </select>
+        </div>
+
+        <div class="col-6">
+          <label class="form-label small m-0">Method</label>
+          <select class="form-select form-select-sm" name="method">
+            <option value="cash">Cash</option>
+            <option value="jazzcash" selected>JazzCash</option>
+          </select>
+        </div>
+
+        <div class="col-12">
+          <label class="form-label small m-0">Amount</label>
+          <input class="form-control form-control-sm" type="number" name="amount" min="1" value="<%= amt %>" data-role="amount">
+          <div class="small text-muted mt-1">Partial me amount lazmi hai, full me optional</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="col-12 col-md-6 d-grid">
+      <button class="btn btn-sm btn-outline-primary btnround" type="submit">Verify</button>
+      <a class="btn btn-sm btn-outline-dark btnround mt-2" href="/admin/orders/<%= oid %>/jazzcash_whatsapp">Open invoice msg</a>
+    </div>
+  </div>
+</form>
               </td>
             </tr>
           <% }) %>
@@ -123,5 +159,25 @@
 
   <% } %>
 </div>
+<script>
+  (function () {
+    const forms = document.querySelectorAll(".js-verify-form");
+    forms.forEach(function (form) {
+      const mode = form.querySelector('[data-role="mode"]');
+      const amount = form.querySelector('[data-role="amount"]');
+      if (!mode || !amount) return;
 
+      function sync() {
+        if (mode.value === "partial") {
+          amount.setAttribute("required", "required");
+        } else {
+          amount.removeAttribute("required");
+        }
+      }
+
+      mode.addEventListener("change", sync);
+      sync();
+    });
+  })();
+</script>
 <%- include("_footer") %>
