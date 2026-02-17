@@ -320,6 +320,22 @@ try {
       CREATE INDEX IF NOT EXISTS idx_sa_emp_salary_emp ON sa_employee_salary_tx(employee_id);
     `);
   } catch (e) {}
+  /* PENDING JAZZCASH partial payments temp table */
+  try {
+    db.exec(`
+      CREATE TABLE IF NOT EXISTS pending_jazz_tx (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER NOT NULL,
+        customer_id TEXT NOT NULL,
+        amount INTEGER NOT NULL,
+        method TEXT NOT NULL DEFAULT 'jazzcash',
+        note TEXT,
+        created_at TEXT NOT NULL
+      );
+      CREATE INDEX IF NOT EXISTS idx_pending_jazz_tx_created ON pending_jazz_tx(created_at);
+      CREATE INDEX IF NOT EXISTS idx_pending_jazz_tx_order ON pending_jazz_tx(order_id);
+    `);
+  } catch (e) {}
   /* INACTIVE CUSTOMERS status table */
   try {
     db.exec(`
@@ -591,7 +607,46 @@ function receiveUdhaar(customerId, amount, method, note, refTypeIn, refIdIn) {
   } catch (e) {
     return { ok: false, msg: "Receive failed" };
   }
+/* raw payment ledger insert (allows multiple partial payments) */
+function insertPaymentLedgerRaw(customerId, oid, amountReceived, method, createdAt, note) {
+  const cid = String(customerId || "").trim();
+  const amt = Number(amountReceived || 0);
+  if (!cid || !amt || amt <= 0) return;
+
+  const mRaw = String(method || "cash").trim().toLowerCase();
+  const m = mRaw === "jazzcash" ? "jazzcash" : "cash";
+
+  const ts = createdAt || nowIso();
+  const n = String(note || "").trim();
+
+  try {
+    db.prepare(
+      "INSERT INTO ledger_entries (customer_id, entry_type, ref_type, ref_id, amount, method, note, created_at) VALUES (?, 'payment', 'order', ?, ?, ?, ?, ?)"
+    ).run(cid, String(oid), -amt, m, n, ts);
+  } catch (e) {}
 }
+
+/* pending jazz tx insert */
+function insertPendingJazzTx(orderId, customerId, amount, method, note, createdAt) {
+  const oid = Number(orderId || 0);
+  const cid = String(customerId || "").trim();
+  const amt = Number(amount || 0);
+  if (!oid || !cid || !amt || amt <= 0) return;
+
+  const mRaw = String(method || "jazzcash").trim().toLowerCase();
+  const m = mRaw === "cash" ? "cash" : "jazzcash";
+
+  const ts = createdAt || nowIso();
+  const n = String(note || "").trim();
+
+  try {
+    db.prepare(
+      "INSERT INTO pending_jazz_tx (order_id, customer_id, amount, method, note, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+    ).run(oid, cid, amt, m, n, ts);
+  } catch (e) {}
+}
+}
+
 /* bottles balance update */
 function updateCustomerBottlesBalance(customerId, deliveredQty, emptyReturnedQty) {
   try {
@@ -700,7 +755,8 @@ ensurePaymentLedgerOnce(o.customer_id, oid, amountReceived, method, now, payment
 }
 
 /* verify jazzcash core */
-function verifyJazzCashCore(oid, overrideAmount) {
+/* verify jazzcash core (now supports full and partial receive like udhaar) */
+function verifyJazzCashCore(oid, overrideAmount, overrideMethod, overrideMode) {
   const o = db.prepare("SELECT * FROM orders WHERE id=?").get(oid);
   if (!o) return { ok: false, msg: "Order not found" };
 
@@ -708,33 +764,94 @@ function verifyJazzCashCore(oid, overrideAmount) {
     return { ok: false, msg: "Not a JazzCash order" };
   }
 
-  const now = nowIso();
+  if (Number(o.payment_received || 0) === 1) {
+    return { ok: true, msg: "Already verified" };
+  }
+
+  const ts = nowIso();
   const qty = Number(o.delivered_qty || o.quantity_requested || 0);
   const totalBill = Number(o.unit_price || 0) * qty;
 
-  const amt =
-    overrideAmount !== undefined && overrideAmount !== null && Number(overrideAmount) > 0
+  // pending jazz me payment_amount remaining due hai
+  const currentDue = (Number(o.payment_amount || 0) > 0) ? Number(o.payment_amount || 0) : totalBill;
+
+  const modeRaw = String(overrideMode || "").trim().toLowerCase();
+  const wantFull = (modeRaw === "full");
+
+  let receiveAmt =
+    (overrideAmount !== undefined && overrideAmount !== null && Number(overrideAmount) > 0)
       ? Number(overrideAmount)
-      : Number(o.payment_amount || 0) > 0
-        ? Number(o.payment_amount)
-        : totalBill;
+      : currentDue;
+
+  if (wantFull) receiveAmt = currentDue;
+
+  if (receiveAmt > currentDue) receiveAmt = currentDue;
+  if (!receiveAmt || receiveAmt <= 0) return { ok: false, msg: "Invalid amount" };
+
+  const methodRaw = String(overrideMethod || "jazzcash").trim().toLowerCase();
+  const method = (methodRaw === "cash") ? "cash" : "jazzcash";
+
+  const remainingAfter = Math.max(0, currentDue - receiveAmt);
 
   db.transaction(() => {
-    db.prepare("UPDATE orders SET payment_received=1, payment_amount=? WHERE id=?").run(amt, oid);
+    // partial receive ko temp table me save karo
+    insertPendingJazzTx(oid, o.customer_id, receiveAmt, method, "pending_jazz_receive", ts);
 
-    ensureSaleLedgerOnce(o.customer_id, String(oid), totalBill, now);
-    ensurePaymentLedgerOnce(o.customer_id, String(oid), amt, "jazzcash", now, 1);
+    if (remainingAfter > 0) {
+      // abhi pending hai
+      db.prepare("UPDATE orders SET payment_received=0, payment_amount=? WHERE id=?").run(remainingAfter, oid);
+      return;
+    }
+
+    // fully cleared
+    db.prepare("UPDATE orders SET payment_received=1, payment_amount=? WHERE id=?").run(totalBill, oid);
+
+    // sale ledger entry ab create hogi
+    ensureSaleLedgerOnce(o.customer_id, String(oid), totalBill, ts);
+
+    // saari pending receives ko ledger me migrate karo
+    const txRows = db.prepare(
+      "SELECT amount, method, note, created_at FROM pending_jazz_tx WHERE order_id=? ORDER BY id ASC"
+    ).all(Number(oid));
+
+    for (const t of txRows) {
+      insertPaymentLedgerRaw(
+        o.customer_id,
+        String(oid),
+        Number(t.amount || 0),
+        t.method,
+        t.created_at,
+        t.note || "pending_jazz"
+      );
+    }
+
+    // cleanup
+    db.prepare("DELETE FROM pending_jazz_tx WHERE order_id=?").run(Number(oid));
   })();
 
   return { ok: true };
 }
-
 /* JazzCash whatsapp message */
+/* JazzCash whatsapp message (fixed paid and due logic) */
 function buildJazzCashPendingMsg(orderRow) {
   const qty = Number(orderRow.delivered_qty || orderRow.quantity_requested || 0);
   const total = Number(orderRow.unit_price || 0) * qty;
-  const paid = Number(orderRow.payment_amount || 0);
-  const due = Math.max(0, total - paid);
+
+  const receivedFlag = Number(orderRow.payment_received || 0) === 1;
+
+  let due = 0;
+  let paid = 0;
+
+  if (receivedFlag) {
+    paid = Number(orderRow.payment_amount || 0);
+    due = Math.max(0, total - paid);
+  } else {
+    // pending jazz: payment_amount is remaining due in this system
+    due = Number(orderRow.payment_amount || 0);
+    if (!due || due <= 0) due = total;
+
+    paid = Math.max(0, total - due);
+  }
 
   const msg =
     `${config.appName}\n` +
@@ -744,12 +861,11 @@ function buildJazzCashPendingMsg(orderRow) {
     `Bottles: ${qty}\n` +
     `Total bill: ${total}\n` +
     `Paid: ${paid}\n` +
-    `Pending: ${due}\n` +
-    `Kindly JazzCash transfer kar dein. Shukriya`;
+    `Due: ${due}\n` +
+    `Please Transfer Pending Jazzcash,Thank you`;
 
   return msg;
 }
-
 function getGlobalStats() {
   const bd = businessDayInfo();
   try {
@@ -911,7 +1027,20 @@ function adminStatsForDay(dayOrInfo) {
 
   todayCashCollected += Number(todayUdhaarPay && todayUdhaarPay.cash ? todayUdhaarPay.cash : 0);
   todayJazzCollected += Number(todayUdhaarPay && todayUdhaarPay.jazz ? todayUdhaarPay.jazz : 0);
+  // 4.5) Pending Jazz partial receives today (count into today collections)
+  try {
+    const pjr = db.prepare(`
+      SELECT
+        COALESCE(SUM(CASE WHEN LOWER(COALESCE(method,''))='cash' THEN amount ELSE 0 END),0) as cashAmt,
+        COALESCE(SUM(CASE WHEN LOWER(COALESCE(method,''))='jazzcash' THEN amount ELSE 0 END),0) as jazzAmt
+      FROM pending_jazz_tx
+      WHERE created_at >= ?
+        AND created_at < ?
+    `).get(info.startIso, info.endIso);
 
+    todayCashCollected += Number(pjr && pjr.cashAmt ? pjr.cashAmt : 0);
+    todayJazzCollected += Number(pjr && pjr.jazzAmt ? pjr.jazzAmt : 0);
+  } catch (e) {}
   // 5) Previous JazzCash collected today, but order delivered on older business day
   const prevJazzRow = db.prepare(`
     SELECT COALESCE(SUM(-le.amount),0) as jazz
@@ -1569,7 +1698,15 @@ const pendingPaymentOrdersRows = pendingPaymentOrders.all();
   const pendingJazzRawStmt = db
     .prepare(
       `
-    SELECT o.id, o.payment_amount, o.delivered_at, c.name as cust_name, c.phone as cust_phone
+    SELECT 
+  o.id,
+  o.payment_amount,
+  o.unit_price,
+  o.delivered_qty,
+  o.quantity_requested,
+  o.delivered_at,
+  c.name as cust_name,
+  c.phone as cust_phone
     FROM orders o
     JOIN customers c ON c.id = o.customer_id
     WHERE o.status='delivered'
@@ -1581,17 +1718,25 @@ const pendingPaymentOrdersRows = pendingPaymentOrders.all();
     );
 
 const pendingJazzRaw = pendingJazzRawStmt.all();
-  const pendingJazz = pendingJazzRaw.map((p) => {
-    const msg =
-      `${config.appName}\n` +
-      `JazzCash pending\n` +
-      `Order #${p.id}\n` +
-      `Customer: ${p.cust_name}\n` +
-      `Pending amount: ${Number(p.payment_amount || 0)}\n` +
-      `Kindly JazzCash transfer kar dein. Shukriya`;
-    return { ...p, wa_url: waLink(p.cust_phone || "", msg) };
+const pendingJazz = pendingJazzRaw.map((p) => {
+  const qty = Number(p.delivered_qty || p.quantity_requested || 0);
+  const totalBill = Number(p.unit_price || 0) * qty;
+
+  const due = (Number(p.payment_amount || 0) > 0) ? Number(p.payment_amount || 0) : totalBill;
+
+  const msg = buildJazzCashPendingMsg({
+    id: p.id,
+    customer_name: p.cust_name,
+    delivered_qty: qty,
+    quantity_requested: qty,
+    unit_price: Number(p.unit_price || 0),
+    payment_amount: due,
+    payment_received: 0,
+    payment_method: "jazzcash",
   });
 
+  return { ...p, wa_url: waLink(p.cust_phone || "", msg) };
+});
   const riderStats = riders.map((r) => ({
     id: r.id,
     name: r.name,
@@ -2319,59 +2464,158 @@ app.get("/admin/orders/:id/jazzcash-whatsapp", requireStaff, (req, res) => {
 });
 
 /* PENDING JAZZCASH */
+/* PENDING JAZZCASH (now supports from/to filters and customer wise section) */
 app.get("/admin/pending_jazzcash", requireStaff, (req, res) => {
   const bd = businessDayInfo();
   const ownerLike = isOwnerLike(req);
 
-  const pendingJazzRawStmt = db
-    .prepare(
-      `
-    SELECT 
+  let from = String(req.query.from || "").trim();
+  let to = String(req.query.to || "").trim();
+
+  const managerAdmin = (!ownerLike && isManagerAdmin(req));
+
+  let where = `
+    WHERE o.status='delivered'
+      AND o.payment_method='jazzcash'
+      AND COALESCE(o.payment_received,0)=0
+  `;
+  const args = [];
+
+  if (managerAdmin) {
+    from = "";
+    to = "";
+    where += " AND o.delivered_at >= ? AND o.delivered_at < ?";
+    args.push(bd.startIso, bd.endIso);
+  } else {
+    if (from) {
+      where += " AND substr(o.delivered_at,1,10) >= ?";
+      args.push(from);
+    }
+    if (to) {
+      where += " AND substr(o.delivered_at,1,10) <= ?";
+      args.push(to);
+    }
+  }
+
+  const rows = db.prepare(
+    `
+    SELECT
       o.id,
       o.payment_amount,
+      o.unit_price,
+      o.delivered_qty,
+      o.quantity_requested,
       o.delivered_at,
+      c.id as customer_id,
       c.name as cust_name,
       c.phone as cust_phone
     FROM orders o
     JOIN customers c ON c.id = o.customer_id
-    WHERE o.status='delivered'
-      AND o.payment_method='jazzcash'
-      AND COALESCE(o.payment_received,0)=0
-      ${(!ownerLike && isManagerAdmin(req)) ? "AND o.delivered_at >= ? AND o.delivered_at < ?" : ""}
-    ORDER BY o.delivered_at DESC
-    LIMIT 500
+    ${where}
+    ORDER BY o.delivered_at DESC, o.id DESC
+    LIMIT 800
   `
-    );
+  ).all(...args);
 
-  const pendingJazzRaw = (!ownerLike && isManagerAdmin(req))
-    ? pendingJazzRawStmt.all(bd.startIso, bd.endIso)
-    : pendingJazzRawStmt.all();
+  const pendingJazzOrders = rows.map((p) => {
+    const qty = Number(p.delivered_qty || p.quantity_requested || 0);
+    const totalBill = Number(p.unit_price || 0) * qty;
 
-  const pendingJazz = pendingJazzRaw.map((p) => {
-    const msg =
-      `${config.appName}\n` +
-      `JazzCash pending\n` +
-      `Order #${p.id}\n` +
-      `Customer: ${p.cust_name}\n` +
-      `Pending amount: ${Number(p.payment_amount || 0)}\n` +
-      `Kindly JazzCash transfer kar dein. Shukriya`;
-    return { ...p, wa_url: waLink(p.cust_phone || "", msg), wa_route: `/admin/orders/${p.id}/jazzcash_whatsapp` };
+    const due = (Number(p.payment_amount || 0) > 0) ? Number(p.payment_amount || 0) : totalBill;
+    const paid = Math.max(0, totalBill - due);
+
+    const msg = buildJazzCashPendingMsg({
+      id: p.id,
+      customer_name: p.cust_name,
+      delivered_qty: qty,
+      quantity_requested: qty,
+      unit_price: Number(p.unit_price || 0),
+      payment_amount: due,
+      payment_received: 0,
+      payment_method: "jazzcash",
+    });
+
+    return {
+      id: p.id,
+      delivered_at: p.delivered_at,
+      customer_id: p.customer_id,
+      cust_name: p.cust_name,
+      cust_phone: p.cust_phone,
+      qty,
+      totalBill,
+      paid,
+      due,
+      payment_amount: due,
+      wa_url: waLink(p.cust_phone || "", msg),
+      wa_route: `/admin/orders/${p.id}/jazzcash_whatsapp`,
+    };
   });
 
-  return renderAny(res, ["admin_pending_jazzcash"], { ...viewData(req), pendingJazz }, { pendingJazz });
-});
+  const map = {};
+  for (const o of pendingJazzOrders) {
+    const key = String(o.customer_id || "");
+    if (!map[key]) {
+      map[key] = {
+        customer_id: o.customer_id,
+        cust_name: o.cust_name,
+        cust_phone: o.cust_phone,
+        orders_count: 0,
+        total_pending: 0,
+        last_delivered_at: o.delivered_at,
+      };
+    }
+    map[key].orders_count += 1;
+    map[key].total_pending += Number(o.due || 0);
 
+    if (String(o.delivered_at || "") > String(map[key].last_delivered_at || "")) {
+      map[key].last_delivered_at = o.delivered_at;
+    }
+  }
+
+  const pendingJazzCustomers = Object.values(map).sort((a, b) => {
+    return String(b.last_delivered_at || "").localeCompare(String(a.last_delivered_at || ""));
+  });
+
+  const pendingJazz = pendingJazzOrders.map((o) => ({
+    id: o.id,
+    payment_amount: o.payment_amount,
+    delivered_at: o.delivered_at,
+    cust_name: o.cust_name,
+    cust_phone: o.cust_phone,
+    wa_url: o.wa_url,
+    wa_route: o.wa_route,
+  }));
+
+  return renderAny(
+    res,
+    ["admin_pending_jazzcash"],
+    {
+      ...viewData(req),
+      pendingJazz,
+      pendingJazzOrders,
+      pendingJazzCustomers,
+      filterFrom: from,
+      filterTo: to,
+      managerAdmin,
+    },
+    { pendingJazz, pendingJazzOrders, pendingJazzCustomers, filterFrom: from, filterTo: to }
+  );
+});
 app.get("/admin/pending-jazzcash", requireStaff, (req, res) => res.redirect("/admin/pending_jazzcash"));
 
 app.post("/admin/orders/:id/verify_jazzcash", requireStaff, (req, res) => {
   const oid = req.params.id;
+
   try {
-    const overrideAmount = pickBody(req, ["amount", "payment_amount", "paid"], null);
-    verifyJazzCashCore(oid, overrideAmount);
+    const amt = pickBody(req, ["amount", "payment_amount", "paid", "received_amount", "verify_amount", "receive_amount"], null);
+    const method = pickBody(req, ["method", "payment_method", "pay_method", "receive_method"], "jazzcash");
+    const mode = pickBody(req, ["mode", "receive_mode", "type"], "");
+
+    verifyJazzCashCore(oid, amt, method, mode);
   } catch (e) {}
+
   return safeRedirectBack(req, res, "/admin/pending_jazzcash");
 });
-
 /* EXPENSES */
 app.get("/admin/expenses", requireStaff, (req, res) => {
   const bd = businessDayInfo();
@@ -4590,4 +4834,4 @@ app.use((req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Server running on http://localhost:${port}`));      
+app.listen(port, () => console.log(`Server running on http://localhost:${port}`));       
