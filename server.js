@@ -587,6 +587,7 @@ function ensurePaymentLedgerOnce(customerId, oid, amountReceived, method, create
 }
 
 /* manual udhaar receive */
+/* manual udhaar receive */
 function receiveUdhaar(customerId, amount, method, note, refTypeIn, refIdIn) {
   const cid = String(customerId || "").trim();
   const amt = Number(amount || 0);
@@ -607,6 +608,8 @@ function receiveUdhaar(customerId, amount, method, note, refTypeIn, refIdIn) {
   } catch (e) {
     return { ok: false, msg: "Receive failed" };
   }
+}
+
 /* raw payment ledger insert (allows multiple partial payments) */
 function insertPaymentLedgerRaw(customerId, oid, amountReceived, method, createdAt, note) {
   const cid = String(customerId || "").trim();
@@ -645,8 +648,6 @@ function insertPendingJazzTx(orderId, customerId, amount, method, note, createdA
     ).run(oid, cid, amt, m, n, ts);
   } catch (e) {}
 }
-}
-
 /* bottles balance update */
 function updateCustomerBottlesBalance(customerId, deliveredQty, emptyReturnedQty) {
   try {
@@ -2612,8 +2613,9 @@ app.post("/admin/orders/:id/verify_jazzcash", requireStaff, (req, res) => {
     const mode = pickBody(req, ["mode", "receive_mode", "type"], "");
 
     verifyJazzCashCore(oid, amt, method, mode);
-  } catch (e) {}
-
+} catch (e) {
+  console.error("verify_jazzcash failed:", e);
+}
   return safeRedirectBack(req, res, "/admin/pending_jazzcash");
 });
 /* EXPENSES */
