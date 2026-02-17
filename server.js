@@ -229,6 +229,11 @@ try {
       CREATE INDEX IF NOT EXISTS idx_spot_fillings_date ON spot_fillings(spot_date);
     `);
   } catch (e) {}
+  ensureColumn(
+    "spot_fillings",
+    "method",
+    "ALTER TABLE spot_fillings ADD COLUMN method TEXT NOT NULL DEFAULT 'cash'"
+  );
   ensureColumn("orders", "payment_received", "ALTER TABLE orders ADD COLUMN payment_received INTEGER NOT NULL DEFAULT 0");
 
   /* extra compat for older dbs */
@@ -688,18 +693,21 @@ function totalOutstandingAll() {
 }
 /* Spot filling totals for a given business ymd */
 function spotTotalsForYmd(ymd) {
-  const out = { qty: 0, total: 0, avgPrice: 0 };
+  const out = { qty: 0, total: 0, cash: 0, jazz: 0, avgPrice: 0 };
   try {
     const row = db.prepare(`
       SELECT 
         COALESCE(SUM(qty),0) as q,
-        COALESCE(SUM(total),0) as t
+        COALESCE(SUM(total),0) as t,
+        COALESCE(SUM(CASE WHEN LOWER(COALESCE(method,''))='jazzcash' THEN total ELSE 0 END),0) as j
       FROM spot_fillings
       WHERE spot_date=?
     `).get(String(ymd));
 
     out.qty = Number(row && row.q ? row.q : 0);
     out.total = Number(row && row.t ? row.t : 0);
+    out.jazz = Number(row && row.j ? row.j : 0);
+    out.cash = out.total - out.jazz;
     out.avgPrice = out.qty > 0 ? Math.round(out.total / out.qty) : 0;
   } catch (e) {}
   return out;
@@ -1085,11 +1093,11 @@ function adminStatsForDay(dayOrInfo) {
   const previousUdhaarCollected = Number(prevUdhaarRow && prevUdhaarRow.amt ? prevUdhaarRow.amt : 0);
 
   // Spot filling adds to sale and cash today
-  if (spot && Number(spot.total || 0) > 0) {
+    if (spot && Number(spot.total || 0) > 0) {
     salesToday += Number(spot.total || 0);
-    todayCashCollected += Number(spot.total || 0);
+    todayCashCollected += Number(spot.cash || 0);
+    todayJazzCollected += Number(spot.jazz || 0);
   }
-
   // 7) Pending JazzCash all time, never resets until verified
   const pendingJazzRow = db.prepare(`
     SELECT COALESCE(SUM(
@@ -1844,7 +1852,11 @@ function spotAddHandler(req, res) {
 
   let qty = Number(pickBody(req, ["qty", "quantity"], 0)) || 0;
   let price = Number(pickBody(req, ["price", "unit_price"], 0)) || 0;
-
+  const methodRaw = (pickBody(req, ["method", "payment_method"], "cash") || "cash")
+    .toString()
+    .trim()
+    .toLowerCase();
+  const method = methodRaw === "jazzcash" ? "jazzcash" : "cash";
   if (qty < 0) qty = 0;
   if (price < 0) price = 0;
 
@@ -1860,13 +1872,12 @@ function spotAddHandler(req, res) {
   const u = getEffectiveUser(req);
   const createdBy = u ? (u.name || u.id || u.role) : "";
 
-  try {
+    try {
     db.prepare(`
-      INSERT INTO spot_fillings (spot_date, qty, price, total, created_by, created_at)
-      VALUES (?, ?, ?, ?, ?, ?)
-    `).run(spotDate, qty, price, total, createdBy, nowIso());
-  } catch (e) {
-    if (wantsJsonReq(req)) return res.json({ ok: false, msg: "Spot save failed" });
+      INSERT INTO spot_fillings (spot_date, qty, price, total, method, created_by, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
+    `).run(spotDate, qty, price, total, method, createdBy, nowIso());
+  } catch (e) {    if (wantsJsonReq(req)) return res.json({ ok: false, msg: "Spot save failed" });
     return safeRedirectBack(req, res, "/admin");
   }
 
@@ -3044,9 +3055,9 @@ function computeDayReport(info) {  const rows = db.prepare(
   }
   if (spot && Number(spot.total || 0) > 0) {
     sales += Number(spot.total || 0);
-    cash += Number(spot.total || 0);
-  }
-  const manualUdhaar = (info && info.ymd) ? manualUdhaarReceivedForDay(info.ymd) : { cash: 0, jazz: 0, total: 0 };
+    cash += Number(spot.cash || 0);
+    jazz += Number(spot.jazz || 0);
+  }  const manualUdhaar = (info && info.ymd) ? manualUdhaarReceivedForDay(info.ymd) : { cash: 0, jazz: 0, total: 0 };
 
   /* NOTE
      Ye adjustments hum sirf sales admin route se enable karain ge
@@ -4836,4 +4847,4 @@ app.use((req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Server running on http://localhost:${port}`));       
+app.listen(port, () => console.log(`Server running on http://localhost:${port}`));        
