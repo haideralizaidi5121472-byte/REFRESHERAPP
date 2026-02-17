@@ -798,6 +798,13 @@
         <label>Unit price</label>
         <input id="spotPriceInput" type="number" min="1" max="1000000" value="1" />
       </div>
+<div class="form_row">
+  <label>Payment method</label>
+  <select id="spotMethod">
+    <option value="cash" selected>Cash</option>
+    <option value="jazzcash">JazzCash</option>
+  </select>
+</div>
 
       <div class="muted" id="spotPreviewText"></div>
       <div id="spotMsg" class="msg"></div>
@@ -868,6 +875,7 @@
     const spotSaveBtn = document.getElementById("spotSaveBtn");
     const spotQtyInput = document.getElementById("spotQtyInput");
     const spotPriceInput = document.getElementById("spotPriceInput");
+const spotMethod = document.getElementById("spotMethod");
     const spotMsg = document.getElementById("spotMsg");
     const spotPreviewText = document.getElementById("spotPreviewText");
 
@@ -892,6 +900,7 @@
       setSpotMsg("", true);
       spotQtyInput.value = 1;
       spotPriceInput.value = 1;
+if (spotMethod) spotMethod.value = "cash";
       previewSpot();
       setTimeout(()=> spotQtyInput.focus(), 50);
     }
@@ -921,6 +930,11 @@
     spotSaveBtn && spotSaveBtn.addEventListener("click", async function(){
       let qty = Number(spotQtyInput.value || 0);
       let price = Number(spotPriceInput.value || 0);
+const methodRaw = (spotMethod && spotMethod.value ? spotMethod.value : "cash")
+  .toString()
+  .trim()
+  .toLowerCase();
+const method = methodRaw === "jazzcash" ? "jazzcash" : "cash";
 
       if(!qty || qty < 1){
         setSpotMsg("Qty invalid", false);
@@ -945,7 +959,7 @@
             "X-Requested-With": "XMLHttpRequest"
           },
           credentials: "same-origin",
-          body: JSON.stringify({ qty, price })
+body: JSON.stringify({ qty, price, method })
         });
 
         let data = null;
@@ -1162,4 +1176,4 @@
   })();
 </script>
 
-<%- include('_footer') %> 
+<%- include('_footer') %>
