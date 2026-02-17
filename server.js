@@ -686,9 +686,13 @@ const paymentReceivedFlag =
     `
     ).run(billQty, emptyReturned, amountReceived, method, now, paymentReceivedFlag, oid);
 
-    ensureSaleLedgerOnce(o.customer_id, oid, totalBill, now);
-    ensurePaymentLedgerOnce(o.customer_id, oid, amountReceived, method, now, paymentReceivedFlag);
+const isPendingJazz = (method === "jazzcash" && paymentReceivedFlag === 0);
 
+if (!isPendingJazz) {
+  ensureSaleLedgerOnce(o.customer_id, oid, totalBill, now);
+}
+
+ensurePaymentLedgerOnce(o.customer_id, oid, amountReceived, method, now, paymentReceivedFlag);
     updateCustomerBottlesBalance(o.customer_id, billQty, emptyReturned);
   })();
 
@@ -1471,8 +1475,11 @@ app.post("/complete-order/:id", requireRole("rider"), (req, res) => {
     `
     ).run(billQty, emptyReturned, amountReceived, method, now, paymentReceivedFlag, oid);
 
-    ensureSaleLedgerOnce(o.customer_id, String(oid), totalBill, now);
-    ensurePaymentLedgerOnce(o.customer_id, String(oid), amountReceived, method, now, paymentReceivedFlag);
+    const isPendingJazz = (method === "jazzcash" && paymentReceivedFlag === 0);
+
+if (!isPendingJazz) {
+  ensureSaleLedgerOnce(o.customer_id, String(oid), totalBill, now);
+}    ensurePaymentLedgerOnce(o.customer_id, String(oid), amountReceived, method, now, paymentReceivedFlag);
 
     updateCustomerBottlesBalance(o.customer_id, billQty, emptyReturned);
   })();
@@ -4583,4 +4590,4 @@ app.use((req, res) => {
 });
 
 const port = process.env.PORT || 3000;
-app.listen(port, () => console.log(`Server running on http://localhost:${port}`));     
+app.listen(port, () => console.log(`Server running on http://localhost:${port}`));      
